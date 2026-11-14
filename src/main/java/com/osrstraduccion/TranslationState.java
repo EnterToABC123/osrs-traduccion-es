@@ -1,4 +1,4 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import java.util.Collections;
 import java.util.List;

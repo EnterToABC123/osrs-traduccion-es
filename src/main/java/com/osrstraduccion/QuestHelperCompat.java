@@ -1,4 +1,4 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.client.callback.ClientThread;

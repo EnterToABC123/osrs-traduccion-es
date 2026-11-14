@@ -1,4 +1,4 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import com.google.gson.Gson;
 import com.google.inject.Provides;
@@ -52,11 +52,11 @@ import java.util.regex.Pattern;
 
 @Slf4j
 @PluginDescriptor(
-    name = "OSRS Translate PT-BR",
-    description = "Traduz dialogos do OSRS para Portugues Brasileiro",
-    tags = {"translate", "portuguese", "ptbr"}
+    name = "OSRS Traducción Español",
+    description = "Traduce OSRS al español (basado en OSRS Translate PT-BR de Walter Rezende)",
+    tags = {"translate", "spanish", "espanol", "traduccion"}
 )
-public class OsrsTranslatePlugin extends Plugin {
+public class TraduccionEspanolPlugin extends Plugin {
     private static final int CHATBOX_UNIVERSE = 162;
     private static final int DIALOG_MESSAGE = 229;
     private static final int CHAT_OVERLAY = 263;
@@ -135,7 +135,7 @@ public class OsrsTranslatePlugin extends Plugin {
     );
     @Inject private Client client;
     @Inject private ClientThread clientThread;
-    @Inject private OsrsTranslateConfig config;
+    @Inject private TraduccionEspanolConfig config;
     @Inject private Gson gson;
     @Inject private OkHttpClient httpClient;
     @Inject private EventBus eventBus;
@@ -154,6 +154,7 @@ public class OsrsTranslatePlugin extends Plugin {
     private ScheduledExecutorService localTranslationHotReloadScheduler;
     private volatile String localTranslationFingerprint = "";
     private RemoteTranslationService remoteTranslationService;
+    private volatile MissingTranslationRecorder missingTranslationRecorder;
     private EventBus.Subscriber menuOpenedTranslationSubscriber;
     private long loginInspectionDeadline;
     private final Set<Integer> inspectedLoginGroups = new HashSet<>();
@@ -161,11 +162,11 @@ public class OsrsTranslatePlugin extends Plugin {
 
     @Override
     protected void startUp() {
-        log.info("[OsrsTranslatePlugin] startUp() chamado!");
-        OsrsTranslateConfigLocalization.start(config.translationLanguage());
+        log.info("[TraduccionEspanolPlugin] startUp() chamado!");
+        TraduccionEspanolConfigLocalization.start(config.translationLanguage());
         File translationCacheRoot = new File(
             RuneLite.RUNELITE_DIR,
-            "osrs-translate" + File.separator + "translations"
+            "osrs-traduccion" + File.separator + "translations"
         );
         log.info("Cache de traducoes remotas: {}", translationCacheRoot.getAbsolutePath());
         remoteTranslationService = new RemoteTranslationService(
@@ -174,6 +175,7 @@ public class OsrsTranslatePlugin extends Plugin {
             translationCacheRoot
         );
         reloadTranslations();
+        updateMissingTranslationRecorder();
         menuOpenedTranslationSubscriber = eventBus.register(
             MenuOpened.class,
             event -> {
@@ -194,13 +196,14 @@ public class OsrsTranslatePlugin extends Plugin {
 
     @Override
     protected void shutDown() {
-        log.info("[OsrsTranslatePlugin] shutDown() chamado!");
-        OsrsTranslateConfigLocalization.stop();
+        log.info("[TraduccionEspanolPlugin] shutDown() chamado!");
+        TraduccionEspanolConfigLocalization.stop();
         if (remoteUpdateScheduler != null) {
             remoteUpdateScheduler.shutdownNow();
             remoteUpdateScheduler = null;
         }
         stopLocalTranslationHotReload();
+        stopMissingTranslationRecorder();
         eventBus.unregister(menuOpenedTranslationSubscriber);
         menuOpenedTranslationSubscriber = null;
         remoteTranslationService = null;
@@ -254,7 +257,7 @@ public class OsrsTranslatePlugin extends Plugin {
             );
             if (result.isChanged() || sourceChanged) {
                 translationState = translationRepository.loadState(
-                    OsrsTranslateConfig.TranslationSource.REMOTE
+                    TraduccionEspanolConfig.TranslationSource.REMOTE
                 );
                 if (skillGuideOpen) {
                     skillGuideNeedsTranslation = true;
@@ -270,16 +273,20 @@ public class OsrsTranslatePlugin extends Plugin {
 
     @Subscribe
     public void onConfigChanged(ConfigChanged event) {
-        if (!"osrstranslate".equals(event.getGroup())) {
+        if (!"osrstraduccion".equals(event.getGroup())) {
             return;
         }
 
-        OsrsTranslateConfig.TranslationLanguage changedLanguage = languageFromConfigValue(
+        TraduccionEspanolConfig.TranslationLanguage changedLanguage = languageFromConfigValue(
             event.getNewValue()
         );
-        OsrsTranslateConfigLocalization.localize(
+        TraduccionEspanolConfigLocalization.localize(
             changedLanguage == null ? config.translationLanguage() : changedLanguage
         );
+        if ("recordMissingTranslations".equals(event.getKey())
+            || "translationLanguage".equals(event.getKey())) {
+            updateMissingTranslationRecorder();
+        }
         if ((!"translationLanguage".equals(event.getKey())
             && !"translationSource".equals(event.getKey())
             && !"translationHotReload".equals(event.getKey())
@@ -302,13 +309,13 @@ public class OsrsTranslatePlugin extends Plugin {
         }
     }
 
-    private OsrsTranslateConfig.TranslationLanguage languageFromConfigValue(String value) {
+    private TraduccionEspanolConfig.TranslationLanguage languageFromConfigValue(String value) {
         if (value == null || value.isEmpty()) {
             return null;
         }
 
-        for (OsrsTranslateConfig.TranslationLanguage language
-            : OsrsTranslateConfig.TranslationLanguage.values()) {
+        for (TraduccionEspanolConfig.TranslationLanguage language
+            : TraduccionEspanolConfig.TranslationLanguage.values()) {
             if (value.equals(language.name())
                 || value.equals(language.toString())
                 || value.equals(language.getRepositoryFolder())) {
@@ -322,9 +329,49 @@ public class OsrsTranslatePlugin extends Plugin {
         return config.translationLanguage().getRepositoryFolder();
     }
 
+    private void updateMissingTranslationRecorder() {
+        stopMissingTranslationRecorder();
+        if (!config.recordMissingTranslations()) {
+            return;
+        }
+        File directory = new File(
+            RuneLite.RUNELITE_DIR,
+            "osrs-traduccion" + File.separator + "sem-traducao"
+        );
+        missingTranslationRecorder = new MissingTranslationRecorder(directory, selectedLanguageFolder(), gson);
+        log.info("Registrando textos sem traducao em {}", missingTranslationRecorder.getFile());
+    }
+
+    private void stopMissingTranslationRecorder() {
+        MissingTranslationRecorder recorder = missingTranslationRecorder;
+        missingTranslationRecorder = null;
+        if (recorder != null) {
+            recorder.shutDown();
+        }
+    }
+
+    private void recordMissingTranslation(String fileName, String source, String text) {
+        MissingTranslationRecorder recorder = missingTranslationRecorder;
+        if (recorder != null) {
+            recorder.record(fileName, source, text);
+        }
+    }
+
+    /** Nome do dicionário ao qual pertence um mapa do estado atual (para o registro). */
+    private static String dictionaryFileName(Map<String, String> map, TranslationState state) {
+        if (map == state.translationsSkills) return "translations_skills.json";
+        if (map == state.translationsQuests) return "translations_quests.json";
+        if (map == state.translationsItems) return "translations_items.json";
+        if (map == state.translationsMenu) return "translations_menu.json";
+        if (map == state.translationsGameMessage) return "translations_game_message.json";
+        if (map == state.translationsWelcome) return "translations_welcome.json";
+        if (map == state.translationsSettings) return "translations_settings.json";
+        return "translations.json";
+    }
+
     private boolean isLocalTranslationSource() {
         return config.developerMode()
-            && config.translationSource() == OsrsTranslateConfig.TranslationSource.LOCAL;
+            && config.translationSource() == TraduccionEspanolConfig.TranslationSource.LOCAL;
     }
 
     private File localTranslationDirectory() {
@@ -341,7 +388,7 @@ public class OsrsTranslatePlugin extends Plugin {
 
         if (isLocalTranslationSource()) {
             translationState = translationRepository.loadState(
-                OsrsTranslateConfig.TranslationSource.LOCAL
+                TraduccionEspanolConfig.TranslationSource.LOCAL
             );
             stopRemoteTranslationUpdater();
             return;
@@ -351,7 +398,7 @@ public class OsrsTranslatePlugin extends Plugin {
             remoteTranslationService.getActiveDirectory(languageFolder)
         );
         translationState = translationRepository.loadState(
-            OsrsTranslateConfig.TranslationSource.REMOTE
+            TraduccionEspanolConfig.TranslationSource.REMOTE
         );
     }
 
@@ -399,7 +446,7 @@ public class OsrsTranslatePlugin extends Plugin {
             }
 
             TranslationState updatedState = translationRepository.loadState(
-                OsrsTranslateConfig.TranslationSource.LOCAL
+                TraduccionEspanolConfig.TranslationSource.LOCAL
             );
             if (!fingerprint.equals(translationRepository.localFingerprint())) {
                 return;
@@ -947,6 +994,12 @@ public class OsrsTranslatePlugin extends Plugin {
 
         String translation = TranslationLookupHelper.findTranslation(domain.translations, domain.regexPatterns, lookup);
 
+        // O chat (CHAT_OVERLAY) também mostra mensagens de outros jogadores: elas não são registradas aqui.
+        // As mensagens do jogo são registradas em onChatMessage, filtradas por tipo.
+        if (translation == null && interfaceId != CHAT_OVERLAY) {
+            recordMissingTranslation(dictionaryFileName(domain.translations, state), "interfaz " + interfaceId, lookup);
+        }
+
         if (translation != null && interfaceId == CHAT_OVERLAY) {
             translation = normalizeChatOverlayTags(translation);
         }
@@ -1051,6 +1104,8 @@ public class OsrsTranslatePlugin extends Plugin {
         if (translation != null) {
             actor.setOverheadText(translation);
             log.debug("[OverheadTranslate] '{}' -> '{}'", clean, translation);
+        } else if (!translationState.translationsOverhead.containsValue(clean)) {
+            recordMissingTranslation("translations_overhead.json", "overhead", clean);
         }
     }
 
@@ -1179,7 +1234,11 @@ public class OsrsTranslatePlugin extends Plugin {
             return;
         }
 
-        String clean = cleanText(event.getMessage());
+        // Algumas mensagens chegam com códigos de cor do jogo ("@mes_hl_cya@Texto</col>").
+        // Procuramos sem o código e o recolocamos na tradução para manter a cor.
+        String rawMessage = event.getMessage();
+        String colorPrefix = TranslationLookupHelper.leadingChatColorCodes(rawMessage);
+        String clean = cleanText(TranslationLookupHelper.stripChatColorCodes(rawMessage));
         TranslationState state = translationState;
         if (clean.isEmpty() || state.translationGameMessageValues.contains(clean)) {
             return;
@@ -1190,9 +1249,22 @@ public class OsrsTranslatePlugin extends Plugin {
             state.regexGameMessageTranslations,
             clean
         );
+        if (translation == null && !colorPrefix.isEmpty()) {
+            // Compatibilidade com entradas antigas que incluem o código de cor na chave
+            translation = TranslationLookupHelper.findTranslation(
+                state.translationsGameMessage,
+                state.regexGameMessageTranslations,
+                cleanText(rawMessage)
+            );
+            if (translation != null && translation.startsWith(colorPrefix)) {
+                translation = translation.substring(colorPrefix.length());
+            }
+        }
         if (translation == null) {
+            recordMissingTranslation("translations_game_message.json", "chat " + event.getType(), clean);
             return;
         }
+        translation = colorPrefix + translation;
 
         if (shouldDeferRichChatOverlayTranslation(translation)) {
             translateInterface(CHAT_OVERLAY);
@@ -1454,7 +1526,7 @@ public class OsrsTranslatePlugin extends Plugin {
             return true;
         }
 
-        private TranslationState loadState(OsrsTranslateConfig.TranslationSource source) {
+        private TranslationState loadState(TraduccionEspanolConfig.TranslationSource source) {
             Map<String, String> translations = loadMap(TRANSLATIONS, source);
             Map<String, String> translationsSkills = loadMap(TRANSLATIONS_SKILLS, source);
             Map<String, String> translationsQuests = loadMap(TRANSLATIONS_QUESTS, source);
@@ -1511,9 +1583,9 @@ public class OsrsTranslatePlugin extends Plugin {
 
         private Map<String, String> loadMap(
             String fileName,
-            OsrsTranslateConfig.TranslationSource source
+            TraduccionEspanolConfig.TranslationSource source
         ) {
-            if (source == OsrsTranslateConfig.TranslationSource.LOCAL) {
+            if (source == TraduccionEspanolConfig.TranslationSource.LOCAL) {
                 return loadLocalMap(fileName);
             }
 
@@ -1579,8 +1651,8 @@ public class OsrsTranslatePlugin extends Plugin {
     }
 
     @Provides
-    OsrsTranslateConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(OsrsTranslateConfig.class);
+    TraduccionEspanolConfig provideConfig(ConfigManager configManager) {
+        return configManager.getConfig(TraduccionEspanolConfig.class);
     }
 
     /**

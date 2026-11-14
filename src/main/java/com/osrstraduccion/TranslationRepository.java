@@ -1,4 +1,4 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import lombok.extern.slf4j.Slf4j;
 

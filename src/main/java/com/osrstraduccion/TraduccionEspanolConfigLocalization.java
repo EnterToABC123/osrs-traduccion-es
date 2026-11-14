@@ -1,4 +1,4 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import javax.swing.AbstractButton;
 import javax.swing.JComponent;
@@ -17,18 +17,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-final class OsrsTranslateConfigLocalization {
+final class TraduccionEspanolConfigLocalization {
     private static final Map<String, UiText> TEXTS = buildTexts();
     private static final AWTEventListener CONFIG_PANEL_LISTENER =
-        OsrsTranslateConfigLocalization::onAwtEvent;
-    private static volatile OsrsTranslateConfig.TranslationLanguage selectedLanguage;
+        TraduccionEspanolConfigLocalization::onAwtEvent;
+    private static volatile TraduccionEspanolConfig.TranslationLanguage selectedLanguage;
     private static boolean listenerInstalled;
     private static boolean localizationPending;
 
-    private OsrsTranslateConfigLocalization() {
+    private TraduccionEspanolConfigLocalization() {
     }
 
-    static synchronized void start(OsrsTranslateConfig.TranslationLanguage language) {
+    static synchronized void start(TraduccionEspanolConfig.TranslationLanguage language) {
         selectedLanguage = language;
         if (!listenerInstalled) {
             Toolkit.getDefaultToolkit().addAWTEventListener(
@@ -48,7 +48,7 @@ final class OsrsTranslateConfigLocalization {
         selectedLanguage = null;
     }
 
-    static void localize(OsrsTranslateConfig.TranslationLanguage language) {
+    static void localize(TraduccionEspanolConfig.TranslationLanguage language) {
         selectedLanguage = language;
         if (SwingUtilities.isEventDispatchThread()) {
             localizeNow(language);
@@ -58,7 +58,7 @@ final class OsrsTranslateConfigLocalization {
         SwingUtilities.invokeLater(() -> localizeNow(language));
     }
 
-    private static void localizeNow(OsrsTranslateConfig.TranslationLanguage language) {
+    private static void localizeNow(TraduccionEspanolConfig.TranslationLanguage language) {
         for (Window window : Window.getWindows()) {
             Container configPanel = findConfigPanel(window);
             if (configPanel != null && isTranslationConfigPanel(configPanel)) {
@@ -90,7 +90,7 @@ final class OsrsTranslateConfigLocalization {
         localizationPending = true;
         SwingUtilities.invokeLater(() -> {
             localizationPending = false;
-            OsrsTranslateConfig.TranslationLanguage language = selectedLanguage;
+            TraduccionEspanolConfig.TranslationLanguage language = selectedLanguage;
             if (language != null) {
                 localizeNow(language);
             }
@@ -132,7 +132,7 @@ final class OsrsTranslateConfigLocalization {
         if (component instanceof JComboBox) {
             JComboBox<?> comboBox = (JComboBox<?>) component;
             for (int index = 0; index < comboBox.getItemCount(); index++) {
-                if (comboBox.getItemAt(index) instanceof OsrsTranslateConfig.TranslationLanguage) {
+                if (comboBox.getItemAt(index) instanceof TraduccionEspanolConfig.TranslationLanguage) {
                     return true;
                 }
             }
@@ -152,7 +152,7 @@ final class OsrsTranslateConfigLocalization {
 
     static void localizeComponentTree(
         Component component,
-        OsrsTranslateConfig.TranslationLanguage language
+        TraduccionEspanolConfig.TranslationLanguage language
     ) {
         localizeComponent(component, language);
         if (!(component instanceof Container)) {
@@ -166,7 +166,7 @@ final class OsrsTranslateConfigLocalization {
 
     private static void localizeComponent(
         Component component,
-        OsrsTranslateConfig.TranslationLanguage language
+        TraduccionEspanolConfig.TranslationLanguage language
     ) {
         String text = null;
         String localizedText = null;
@@ -203,7 +203,7 @@ final class OsrsTranslateConfigLocalization {
     private static String localizeTooltip(
         String tooltip,
         String localizedTitle,
-        OsrsTranslateConfig.TranslationLanguage language
+        TraduccionEspanolConfig.TranslationLanguage language
     ) {
         UiText directText = TEXTS.get(tooltip);
         if (directText != null) {
@@ -310,8 +310,8 @@ final class OsrsTranslateConfigLocalization {
             this.spanish = spanish;
         }
 
-        private String forLanguage(OsrsTranslateConfig.TranslationLanguage language) {
-            return language == OsrsTranslateConfig.TranslationLanguage.SPANISH
+        private String forLanguage(TraduccionEspanolConfig.TranslationLanguage language) {
+            return language == TraduccionEspanolConfig.TranslationLanguage.SPANISH
                 ? spanish
                 : portuguese;
         }

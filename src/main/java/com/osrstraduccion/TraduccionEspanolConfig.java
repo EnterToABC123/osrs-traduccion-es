@@ -1,12 +1,12 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
-@ConfigGroup("osrstranslate")
-public interface OsrsTranslateConfig extends Config {
+@ConfigGroup("osrstraduccion")
+public interface TraduccionEspanolConfig extends Config {
     enum TranslationLanguage {
         PORTUGUESE_BRAZIL("Português", "pt-BR"),
         SPANISH("Español", "ESP");
@@ -60,7 +60,7 @@ public interface OsrsTranslateConfig extends Config {
         position = 0
     )
     default TranslationLanguage translationLanguage() {
-        return TranslationLanguage.PORTUGUESE_BRAZIL;
+        return TranslationLanguage.SPANISH;
     }
 
     @ConfigItem(
@@ -105,6 +105,18 @@ public interface OsrsTranslateConfig extends Config {
     )
     default String localTranslationPath() {
         return "";
+    }
+
+    @ConfigItem(
+        keyName = "recordMissingTranslations",
+        name = "Registrar textos sem tradução",
+        description = "Salva em ~/.runelite/osrs-traduccion/sem-traducao/ os textos que não estão no dicionário "
+            + "(diálogos, falas, mensagens do jogo). Nada é enviado pela internet.",
+        section = translationCorrection,
+        position = 4
+    )
+    default boolean recordMissingTranslations() {
+        return false;
     }
 
     @ConfigSection(

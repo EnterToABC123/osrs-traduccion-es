@@ -1,54 +1,30 @@
-# OSRS Translate PT-BR
+# OSRS Traducción Español
 
-Plugin RuneLite que traduz o Old School RuneScape para Português brasileiro e
-Espanhol em tempo real.
+Plugin de RuneLite que traduce Old School RuneScape al español: diálogos, opciones, menús, mensajes del juego,
+diarios de misiones y de logros, libros, objetos y más.
 
-Autor: Walter Rezende
+Está basado en [OSRS Translate PT-BR](https://github.com/walterrezende12-tech/Traducao-OSRS-BR) de Walter Rezende
+(licencia BSD-2) y usa sus diccionarios, con una revisión completa del español.
 
-## 🤝 Quer contribuir?
+## Diferencias con el plugin original
 
-Contribua com traduções, correções de bugs ou novos idiomas. Use o Discord ou relate um problema:
+- **Español por defecto**, con nombre y configuración propios (puede convivir con el original).
+- **Diccionario en español revisado**: más de 2.100 correcciones (mayúsculas, signos `¡` `¿`, traducciones
+  a medias o equivocadas) y más de 600 entradas nuevas.
+- **Mensajes del chat con color**: el juego envía algunos mensajes con códigos como `@mes_hl_cya@`;
+  ahora se traducen y conservan su color.
+- **Registro de textos sin traducir** (opcional, desactivado por defecto): guarda en
+  `~/.runelite/osrs-traduccion/sem-traducao/ESP.jsonl` lo que el juego muestra y no está en el diccionario,
+  para poder traducirlo. Nada se envía por internet.
 
-- [Discord](https://discord.gg/4eAbaj29Gt)
-- [Reportar um problema](https://github.com/walterrezende12-tech/Traducao-OSRS-BR/issues)
+## Diccionarios
 
-## Funcionalidades
+Los diccionarios se descargan de
+[EnterToABC123/osrs-translate-translations](https://github.com/EnterToABC123/osrs-translate-translations),
+se verifican con SHA-256 y se guardan en `~/.runelite/osrs-traduccion/translations/`.
+El plugin hace peticiones a GitHub (api.github.com y raw.githubusercontent.com) para descargarlos;
+GitHub ve tu dirección IP como en cualquier descarga. No se envía ningún dato de tu cuenta ni del juego.
 
-- Tradução de diálogos, opções de resposta e falas acima da cabeça.
-- Tradução de menus, mensagens do jogo, Skill Guide, Quest Journal, diários
-  de conquistas, pergaminhos de pistas, itens, livros e notas, tela de
-  boas-vindas e configurações.
-- Seleção de idioma preparada para novos pacotes de tradução.
-- Compatibilidade com os plugins:
-  - Quest Helper
-  - Menu Entry Swapper
-  - Item Charges
-  - Friend Notes
-  - Clue Scroll
-  - Examine (preços e valores de alquimia)
-- Atualizações automáticas dos dicionários sem reinstalar o plugin.
-- Modo desenvolvedor para testar dicionários locais com recarga automática.
+## Licencia
 
-## Traduções remotas
-
-Os dicionários são publicados no repositório
-[`osrs-translate-translations`](https://github.com/walterrezende12-tech/osrs-translate-translations).
-
-O plugin verifica atualizações ao iniciar e, depois, uma vez por hora. Cada
-arquivo é baixado por HTTPS e validado com SHA-256 antes da nova versão ser
-ativada. Se a atualização falhar, o último cache válido continua em uso.
-
-As requisições são feitas ao GitHub e enviam somente os dados técnicos normais
-de uma conexão HTTPS, como endereço IP e `User-Agent`. Nenhum dado da conta,
-personagem ou jogo é enviado.
-
-O cache fica no diretório do RuneLite:
-
-```text
-~/.runelite/osrs-translate/translations/<idioma>/
-```
-
-## Instalação
-
-Abra o RuneLite, acesse **Plugin Hub**, pesquise `OSRS Translate PT-BR` e
-selecione **Install**.
+BSD-2-Clause. Código original © Walter Rezende.

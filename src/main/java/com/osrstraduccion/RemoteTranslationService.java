@@ -1,4 +1,4 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
@@ -34,7 +34,7 @@ import java.util.stream.Stream;
 
 final class RemoteTranslationService {
     static final String DEFAULT_MANIFEST_URL =
-        "https://api.github.com/repos/walterrezende12-tech/"
+        "https://api.github.com/repos/EnterToABC123/"
             + "osrs-translate-translations/contents/manifest.json?ref=main";
 
     static final List<String> REQUIRED_FILES = Collections.unmodifiableList(Arrays.asList(
@@ -257,7 +257,7 @@ final class RemoteTranslationService {
         return new Request.Builder()
             .get()
             .header("Accept", "application/vnd.github.raw+json, application/json")
-            .header("User-Agent", "OSRS-Translate-PT-BR/1.0")
+            .header("User-Agent", "OSRS-Traduccion-ES/1.0")
             .url(uri.toString())
             .build();
     }

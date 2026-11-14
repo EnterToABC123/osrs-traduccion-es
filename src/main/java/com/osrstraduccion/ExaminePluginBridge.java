@@ -1,11 +1,11 @@
-package com.osrstranslate;
+package com.osrstraduccion;
 
 import net.runelite.api.MenuEntry;
 import net.runelite.api.events.MenuOptionClicked;
 
 final class ExaminePluginBridge
 {
-    void restoreEnglishOption(MenuOptionClicked event, OsrsTranslatePlugin plugin)
+    void restoreEnglishOption(MenuOptionClicked event, TraduccionEspanolPlugin plugin)
     {
         if (event == null || plugin == null || !plugin.isMenuTranslationEnabled())
         {
