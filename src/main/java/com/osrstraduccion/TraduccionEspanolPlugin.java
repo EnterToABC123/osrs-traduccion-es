@@ -1565,7 +1565,7 @@ public class TraduccionEspanolPlugin extends Plugin {
             );
 
             log.info(
-                "PT-BR carregado: dialogos={} skills={} quests={} items={} menu={} "
+                "Diccionarios cargados: dialogos={} skills={} quests={} items={} menu={} "
                     + "overhead={} gameMessages={} welcome={} settings={} regex={} overheadRegex={} welcomeRegex={}",
                 translations.size(),
                 translationsSkills.size(),

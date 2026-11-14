@@ -246,13 +246,20 @@ final class TraduccionEspanolConfigLocalization {
         Map<String, UiText> texts = new HashMap<>();
         add(texts, "Idioma", "Idioma", "Idioma");
         add(texts, "Seleciona o idioma das traduções", "Seleciona o idioma das traduções", "Selecciona el idioma de las traducciones");
-        add(texts, "Seleciona o idioma baixado do repositório oficial", "Seleciona o idioma baixado do repositório oficial", "Selecciona el idioma descargado del repositorio oficial");
+        add(texts, "Seleciona o idioma baixado do repositório de dicionários", "Seleciona o idioma baixado do repositório de dicionários", "Selecciona el idioma descargado del repositorio de diccionarios");
         add(texts, "Correção tradução", "Correção tradução", "Corrección de traducción");
         add(texts, "Opções para testar e corrigir traduções locais", "Opções para testar e corrigir traduções locais", "Opciones para probar y corregir traducciones locales");
         add(texts, "Modo desenvolvedor", "Modo desenvolvedor", "Modo desarrollador");
         add(texts, "Permite usar traduções locais e hot reload para testar correções", "Permite usar traduções locais e hot reload para testar correções", "Permite usar traducciones locales y hot reload para probar correcciones");
         add(texts, "Fonte das traduções", "Fonte das traduções", "Fuente de las traducciones");
         add(texts, "Escolhe entre os dicionários remotos e os arquivos locais do projeto", "Escolhe entre os dicionários remotos e os arquivos locais do projeto", "Elige entre los diccionarios remotos y los archivos locales del proyecto");
+        add(texts, "Escolhe entre os dicionários remotos e os JSONs locais da pasta 'local' dentro da pasta de dados do plugin no RuneLite",
+            "Escolhe entre os dicionários remotos e os JSONs locais da pasta 'local' dentro da pasta de dados do plugin no RuneLite",
+            "Elige entre los diccionarios remotos y los JSON locales de la carpeta 'local' dentro de la carpeta de datos del plugin en RuneLite");
+        add(texts, "Registrar textos sem tradução", "Registrar textos sem tradução", "Registrar textos sin traducir");
+        add(texts, "Salva na pasta 'sem-traducao' (dentro da pasta de dados do plugin) os textos que não estão no dicionário (diálogos, falas, mensagens do jogo). Nada é enviado pela internet.",
+            "Salva na pasta 'sem-traducao' (dentro da pasta de dados do plugin) os textos que não estão no dicionário (diálogos, falas, mensagens do jogo). Nada é enviado pela internet.",
+            "Guarda en la carpeta 'sem-traducao' (dentro de la carpeta de datos del plugin) los textos que no están en el diccionario (diálogos, frases, mensajes del juego). No se envía nada por internet.");
         add(texts, "Remota", "Remota", "Remota");
         add(texts, "Local", "Local", "Local");
         add(texts, "Caminho dos JSONs", "Caminho dos JSONs", "Ruta de los JSON");

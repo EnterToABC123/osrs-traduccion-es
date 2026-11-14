@@ -55,7 +55,7 @@ public interface TraduccionEspanolConfig extends Config {
     @ConfigItem(
         keyName = "translationLanguage",
         name = "Idioma",
-        description = "Seleciona o idioma baixado do repositório oficial",
+        description = "Seleciona o idioma baixado do repositório de dicionários",
         section = languageSection,
         position = 0
     )
