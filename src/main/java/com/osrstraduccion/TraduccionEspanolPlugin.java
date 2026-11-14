@@ -24,7 +24,6 @@ import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
-import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -32,10 +31,10 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.util.Filepath;
 
 import javax.inject.Inject;
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashSet;
@@ -53,6 +52,7 @@ import java.util.regex.Pattern;
 @Slf4j
 @PluginDescriptor(
     name = "OSRS Traducción Español",
+    internalName = "osrs-traduccion-es",
     description = "Traduce OSRS al español (basado en OSRS Translate PT-BR de Walter Rezende)",
     tags = {"translate", "spanish", "espanol", "traduccion"}
 )
@@ -155,20 +155,20 @@ public class TraduccionEspanolPlugin extends Plugin {
     private volatile String localTranslationFingerprint = "";
     private RemoteTranslationService remoteTranslationService;
     private volatile MissingTranslationRecorder missingTranslationRecorder;
+    private volatile Filepath dataDirectory;
     private EventBus.Subscriber menuOpenedTranslationSubscriber;
     private long loginInspectionDeadline;
     private final Set<Integer> inspectedLoginGroups = new HashSet<>();
     private final Set<Integer> loginInterfaceGroups = new HashSet<>();
 
     @Override
-    protected void startUp() {
+    protected void startUp() throws Exception {
         log.info("[TraduccionEspanolPlugin] startUp() chamado!");
         TraduccionEspanolConfigLocalization.start(config.translationLanguage());
-        File translationCacheRoot = new File(
-            RuneLite.RUNELITE_DIR,
-            "osrs-traduccion" + File.separator + "translations"
-        );
-        log.info("Cache de traducoes remotas: {}", translationCacheRoot.getAbsolutePath());
+        // Todos los archivos del plugin viven en su carpeta de datos de RuneLite (API Filepath).
+        dataDirectory = getPluginDirectory();
+        Filepath translationCacheRoot = dataDirectory.joinSegment("translations");
+        log.info("Cache de traducoes remotas: {}", translationCacheRoot);
         remoteTranslationService = new RemoteTranslationService(
             httpClient,
             gson,
@@ -290,7 +290,6 @@ public class TraduccionEspanolPlugin extends Plugin {
         if ((!"translationLanguage".equals(event.getKey())
             && !"translationSource".equals(event.getKey())
             && !"translationHotReload".equals(event.getKey())
-            && !"localTranslationPath".equals(event.getKey())
             && !"developerMode".equals(event.getKey()))
             || remoteTranslationService == null) {
             return;
@@ -334,11 +333,12 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (!config.recordMissingTranslations()) {
             return;
         }
-        File directory = new File(
-            RuneLite.RUNELITE_DIR,
-            "osrs-traduccion" + File.separator + "sem-traducao"
-        );
-        missingTranslationRecorder = new MissingTranslationRecorder(directory, selectedLanguageFolder(), gson);
+        Filepath base = dataDirectory;
+        if (base == null) {
+            return;
+        }
+        missingTranslationRecorder = new MissingTranslationRecorder(
+            base.joinSegment("sem-traducao"), selectedLanguageFolder(), gson);
         log.info("Registrando textos sem traducao em {}", missingTranslationRecorder.getFile());
     }
 
@@ -374,12 +374,10 @@ public class TraduccionEspanolPlugin extends Plugin {
             && config.translationSource() == TraduccionEspanolConfig.TranslationSource.LOCAL;
     }
 
-    private File localTranslationDirectory() {
-        String path = config.localTranslationPath();
-        if (path == null || path.trim().isEmpty()) {
-            return null;
-        }
-        return new File(path.trim());
+    /** Carpeta fija para probar diccionarios locales: <carpeta de datos del plugin>/local. */
+    private Filepath localTranslationDirectory() {
+        Filepath base = dataDirectory;
+        return base == null ? null : base.joinSegment("local");
     }
 
     private void reloadTranslations() {
@@ -1474,49 +1472,53 @@ public class TraduccionEspanolPlugin extends Plugin {
         private static final String TRANSLATIONS_WELCOME = "translations_welcome.json";
         private static final String TRANSLATIONS_SETTINGS = "translations_settings.json";
 
-        private volatile File remoteCacheDirectory;
-        private volatile File localTranslationDirectory;
+        private volatile Filepath remoteCacheDirectory;
+        private volatile Filepath localTranslationDirectory;
 
-        private boolean configureRemoteCacheDirectory(File directory) {
-            File previous = remoteCacheDirectory;
+        private boolean configureRemoteCacheDirectory(Filepath directory) {
+            Filepath previous = remoteCacheDirectory;
             remoteCacheDirectory = directory;
             return previous == null ? directory != null : !previous.equals(directory);
         }
 
-        private void configureLocalDirectory(File directory) {
+        private void configureLocalDirectory(Filepath directory) {
             localTranslationDirectory = directory;
         }
 
         private String localFingerprint() {
-            File directory = localTranslationDirectory;
+            Filepath directory = localTranslationDirectory;
             StringBuilder fingerprint = new StringBuilder();
             for (String fileName : RemoteTranslationService.REQUIRED_FILES) {
-                File file = directory == null ? null : new File(directory, fileName);
+                Filepath file = directory == null ? null : directory.joinSegment(fileName);
                 if (file == null || !file.isFile()) {
                     fingerprint.append(fileName).append(":missing;");
-                } else {
+                    continue;
+                }
+                try {
                     fingerprint.append(fileName)
-                        .append(':').append(file.length())
-                        .append(':').append(file.lastModified())
+                        .append(':').append(file.size())
+                        .append(':').append(file.getLastModifiedTime().toMillis())
                         .append(';');
+                } catch (IOException e) {
+                    fingerprint.append(fileName).append(":error;");
                 }
             }
             return fingerprint.toString();
         }
 
         private boolean areLocalFilesValid() {
-            File directory = localTranslationDirectory;
+            Filepath directory = localTranslationDirectory;
             if (directory == null) {
                 return true;
             }
 
             for (String fileName : RemoteTranslationService.REQUIRED_FILES) {
-                File file = new File(directory, fileName);
+                Filepath file = directory.joinSegment(fileName);
                 if (!file.isFile()) {
                     continue;
                 }
 
-                try (InputStream input = new FileInputStream(file)) {
+                try (InputStream input = file.openInputStream()) {
                     TranslationLookupHelper.parseJsonMapStrict(input);
                 } catch (Exception e) {
                     log.warn("Aguardando a conclusao da edicao do arquivo local: {}", file);
@@ -1589,18 +1591,18 @@ public class TraduccionEspanolPlugin extends Plugin {
                 return loadLocalMap(fileName);
             }
 
-            File cacheDirectory = remoteCacheDirectory;
+            Filepath cacheDirectory = remoteCacheDirectory;
             if (cacheDirectory == null) {
                 return Collections.emptyMap();
             }
 
-            File remoteFile = new File(cacheDirectory, fileName);
+            Filepath remoteFile = cacheDirectory.joinSegment(fileName);
             if (!remoteFile.isFile()) {
                 log.warn("Arquivo ausente no cache remoto: {}", fileName);
                 return Collections.emptyMap();
             }
 
-            try (InputStream input = new FileInputStream(remoteFile)) {
+            try (InputStream input = remoteFile.openInputStream()) {
                 return TranslationLookupHelper.parseJsonMap(input);
             } catch (Exception e) {
                 log.warn("Cache remoto invalido para {}", fileName, e);
@@ -1609,18 +1611,18 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         private Map<String, String> loadLocalMap(String fileName) {
-            File directory = localTranslationDirectory;
+            Filepath directory = localTranslationDirectory;
             if (directory == null || !directory.isDirectory()) {
                 return Collections.emptyMap();
             }
 
-            File localFile = new File(directory, fileName);
+            Filepath localFile = directory.joinSegment(fileName);
             if (!localFile.isFile()) {
                 log.warn("Arquivo local de traducoes ausente: {}", localFile);
                 return Collections.emptyMap();
             }
 
-            try (InputStream input = new FileInputStream(localFile)) {
+            try (InputStream input = localFile.openInputStream()) {
                 return TranslationLookupHelper.parseJsonMapStrict(input);
             } catch (Exception e) {
                 log.warn("Arquivo local de traducoes invalido: {}", localFile, e);

@@ -3,67 +3,63 @@ package com.osrstraduccion;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.io.Writer;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.util.Filepath;
 
 /**
- * Salva em um arquivo local os textos que o jogo exibiu e que não estão no dicionário,
- * para que possam ser traduzidos depois. Uma linha JSON por texto, sem repetições
- * (inclusive entre sessões).
+ * Guarda en un archivo local los textos que el juego mostró y que no están en el diccionario,
+ * para poder traducirlos después. Una línea JSON por texto, sin repetidos (también entre sesiones).
  *
- * Arquivo: ~/.runelite/osrs-traduccion/sem-traducao/<idioma>.jsonl
- * Nada é enviado pela internet.
+ * Archivo: <carpeta de datos del plugin>/sem-traducao/<idioma>.jsonl
+ * No se envía nada por internet.
  */
 @Slf4j
 final class MissingTranslationRecorder
 {
     private static final int MAX_PER_SESSION = 20000;
     private static final int MAX_TEXT_LENGTH = 2000;
-    /** Pelo menos uma palavra de 3 letras: descarta números, nomes curtos, ícones etc. */
+    /** Al menos una palabra de 3 letras: descarta números, nombres cortos, iconos, etc. */
     private static final Pattern HAS_WORD = Pattern.compile("[A-Za-z]{3,}");
-    /** Só números, sinais e unidades ("1,234", "50%", "x3", "12:30"). */
+    /** Solo números, signos y unidades ("1,234", "50%", "x3", "12:30"). */
     private static final Pattern ONLY_NUMBERS = Pattern.compile("^[\\d\\s.,:;/%()+\\-x*#kmKM]+$");
 
-    private final File file;
+    private final Filepath directory;
+    private final Filepath file;
     private final Gson gson;
     private final Set<String> seen = ConcurrentHashMap.newKeySet();
     private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "osrs-translate-missing-recorder");
+        Thread t = new Thread(r, "osrs-traduccion-missing-recorder");
         t.setDaemon(true);
         return t;
     });
     private volatile int recordedThisSession;
 
-    MissingTranslationRecorder(File directory, String languageFolder, Gson gson)
+    MissingTranslationRecorder(Filepath directory, String languageFolder, Gson gson)
     {
-        this.file = new File(directory, languageFolder + ".jsonl");
+        this.directory = directory;
+        this.file = directory.joinSegment(languageFolder + ".jsonl");
         this.gson = gson;
         writer.execute(this::loadExisting);
     }
 
-    File getFile()
+    Filepath getFile()
     {
         return file;
     }
 
     /**
-     * @param fileName dicionário onde o texto deveria estar (ex.: translations.json)
-     * @param source   de onde veio: interface, overhead ou tipo de mensagem do chat
-     * @param text     texto em inglês, exatamente como foi procurado no dicionário
+     * @param fileName diccionario donde debería ir el texto (p. ej. translations.json)
+     * @param source   de dónde salió: interfaz, overhead o tipo de mensaje del chat
+     * @param text     texto en inglés tal como se buscó en el diccionario
      */
     void record(String fileName, String source, String text)
     {
@@ -92,17 +88,10 @@ final class MissingTranslationRecorder
         writer.execute(() -> append(json));
     }
 
+    /** Deja de aceptar escrituras; las pendientes terminan solas en el hilo del registro. */
     void shutDown()
     {
         writer.shutdown();
-        try
-        {
-            writer.awaitTermination(2, TimeUnit.SECONDS);
-        }
-        catch (InterruptedException e)
-        {
-            Thread.currentThread().interrupt();
-        }
     }
 
     private void loadExisting()
@@ -111,8 +100,7 @@ final class MissingTranslationRecorder
         {
             return;
         }
-        try (BufferedReader in = new BufferedReader(
-            new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)))
+        try (BufferedReader in = file.openBufferedReader())
         {
             String line;
             while ((line = in.readLine()) != null)
@@ -124,32 +112,30 @@ final class MissingTranslationRecorder
                 }
                 catch (Exception ignored)
                 {
-                    // linha corrompida: ignorada
+                    // línea dañada: se ignora
                 }
             }
         }
         catch (IOException e)
         {
-            log.warn("Nao foi possivel ler o registro de textos sem traducao: {}", file, e);
+            log.warn("No se pudo leer el registro de textos sin traducir: {}", file, e);
         }
     }
 
     private void append(String json)
     {
-        File parent = file.getParentFile();
-        if (parent != null && !parent.isDirectory() && !parent.mkdirs())
+        try
         {
-            log.warn("Nao foi possivel criar a pasta {}", parent);
-            return;
-        }
-        try (Writer out = new OutputStreamWriter(new FileOutputStream(file, true), StandardCharsets.UTF_8))
-        {
-            out.write(json);
-            out.write('\n');
+            directory.createDirectories();
+            try (Writer out = file.openWriter(StandardOpenOption.CREATE, StandardOpenOption.APPEND))
+            {
+                out.write(json);
+                out.write('\n');
+            }
         }
         catch (IOException e)
         {
-            log.warn("Nao foi possivel escrever em {}", file, e);
+            log.warn("No se pudo escribir en {}", file, e);
         }
     }
 }

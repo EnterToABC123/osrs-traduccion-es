@@ -13,15 +13,18 @@ Está basado en [OSRS Translate PT-BR](https://github.com/walterrezende12-tech/T
   a medias o equivocadas) y más de 600 entradas nuevas.
 - **Mensajes del chat con color**: el juego envía algunos mensajes con códigos como `@mes_hl_cya@`;
   ahora se traducen y conservan su color.
-- **Registro de textos sin traducir** (opcional, desactivado por defecto): guarda en
-  `~/.runelite/osrs-traduccion/sem-traducao/ESP.jsonl` lo que el juego muestra y no está en el diccionario,
-  para poder traducirlo. Nada se envía por internet.
+- **Registro de textos sin traducir** (opcional, desactivado por defecto): guarda en la carpeta
+  `sem-traducao` (dentro de la carpeta de datos del plugin en RuneLite) lo que el juego muestra y no está
+  en el diccionario, para poder traducirlo. Nada se envía por internet.
+- **Modo de pruebas** (Modo desenvolvedor + fuente Local): lee los JSON de la carpeta `local`
+  dentro de la carpeta de datos del plugin y los recarga al guardarlos.
 
 ## Diccionarios
 
 Los diccionarios se descargan de
 [EnterToABC123/osrs-translate-translations](https://github.com/EnterToABC123/osrs-translate-translations),
-se verifican con SHA-256 y se guardan en `~/.runelite/osrs-traduccion/translations/`.
+se verifican con SHA-256 y se guardan en la carpeta `translations` dentro de la carpeta de datos del plugin.
+Todo el acceso a archivos usa la API `Filepath` de RuneLite.
 El plugin hace peticiones a GitHub (api.github.com y raw.githubusercontent.com) para descargarlos;
 GitHub ve tu dirección IP como en cualquier descarga. No se envía ningún dato de tu cuenta ni del juego.
 

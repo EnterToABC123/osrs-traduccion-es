@@ -66,7 +66,8 @@ public interface TraduccionEspanolConfig extends Config {
     @ConfigItem(
         keyName = "translationSource",
         name = "Fonte das traduções",
-        description = "Escolhe entre os dicionários remotos e os arquivos locais do projeto",
+        description = "Escolhe entre os dicionários remotos e os JSONs locais da pasta 'local' "
+            + "dentro da pasta de dados do plugin no RuneLite",
         section = translationCorrection,
         position = 1
     )
@@ -97,21 +98,10 @@ public interface TraduccionEspanolConfig extends Config {
     }
 
     @ConfigItem(
-        keyName = "localTranslationPath",
-        name = "Caminho dos JSONs",
-        description = "Pasta que contém os arquivos JSON quando a fonte Local estiver selecionada",
-        section = translationCorrection,
-        position = 2
-    )
-    default String localTranslationPath() {
-        return "";
-    }
-
-    @ConfigItem(
         keyName = "recordMissingTranslations",
         name = "Registrar textos sem tradução",
-        description = "Salva em ~/.runelite/osrs-traduccion/sem-traducao/ os textos que não estão no dicionário "
-            + "(diálogos, falas, mensagens do jogo). Nada é enviado pela internet.",
+        description = "Salva na pasta 'sem-traducao' (dentro da pasta de dados do plugin) os textos que não "
+            + "estão no dicionário (diálogos, falas, mensagens do jogo). Nada é enviado pela internet.",
         section = translationCorrection,
         position = 4
     )

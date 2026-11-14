@@ -2,14 +2,14 @@ package com.osrstraduccion;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import net.runelite.client.util.Filepath;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -17,14 +17,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,6 +29,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Descarga los diccionarios publicados en GitHub y los guarda en la carpeta de datos del plugin
+ * (siempre a través de {@link Filepath}).
+ */
 final class RemoteTranslationService {
     static final String DEFAULT_MANIFEST_URL =
         "https://api.github.com/repos/EnterToABC123/"
@@ -54,17 +55,18 @@ final class RemoteTranslationService {
     private static final long MAX_TRANSLATION_BYTES = 64L * 1024L * 1024L;
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]+");
     private static final Pattern SHA_256 = Pattern.compile("[a-fA-F0-9]{64}");
+    private static final String STAGING_PREFIX = "staging-";
     private final OkHttpClient httpClient;
     private final Gson gson;
-    private final File cacheRoot;
+    private final Filepath cacheRoot;
 
-    RemoteTranslationService(OkHttpClient httpClient, Gson gson, File cacheRoot) {
+    RemoteTranslationService(OkHttpClient httpClient, Gson gson, Filepath cacheRoot) {
         this.httpClient = httpClient;
         this.gson = gson;
         this.cacheRoot = cacheRoot;
     }
 
-    File getActiveDirectory(String language) {
+    Filepath getActiveDirectory(String language) {
         String safeLanguage;
         try {
             safeLanguage = requireSafeName(language, "idioma");
@@ -72,21 +74,21 @@ final class RemoteTranslationService {
             return null;
         }
 
-        File languageRoot = new File(cacheRoot, safeLanguage);
-        File activeFile = new File(languageRoot, "active.txt");
+        Filepath languageRoot = cacheRoot.joinSegment(safeLanguage);
+        Filepath activeFile = languageRoot.joinSegment("active.txt");
         if (!activeFile.isFile()) {
             return null;
         }
 
         try {
-            String releaseId = Files.readString(activeFile.toPath(), StandardCharsets.UTF_8).trim();
+            String releaseId = readString(activeFile).trim();
             if (!SAFE_NAME.matcher(releaseId).matches()) {
                 return null;
             }
 
-            File releaseDirectory = new File(new File(languageRoot, "releases"), releaseId);
+            Filepath releaseDirectory = languageRoot.join("releases", releaseId);
             return isCompleteRelease(releaseDirectory) ? releaseDirectory : null;
-        } catch (IOException e) {
+        } catch (IOException | IllegalArgumentException e) {
             return null;
         }
     }
@@ -103,14 +105,14 @@ final class RemoteTranslationService {
         }
 
         String releaseId = buildReleaseId(manifest.version, languageManifest);
-        File languageRoot = new File(cacheRoot, safeLanguage);
-        File releasesRoot = new File(languageRoot, "releases");
-        File releaseDirectory = new File(releasesRoot, releaseId);
-        File previousDirectory = getActiveDirectory(safeLanguage);
+        Filepath languageRoot = cacheRoot.joinSegment(safeLanguage);
+        Filepath releasesRoot = languageRoot.joinSegment("releases");
+        Filepath releaseDirectory = releasesRoot.joinSegment(releaseId);
+        Filepath previousDirectory = getActiveDirectory(safeLanguage);
         boolean installed = false;
 
         if (!isValidRelease(releaseDirectory, languageManifest)) {
-            deleteDirectory(releaseDirectory.toPath());
+            deleteIfPresent(releaseDirectory);
             installRelease(manifestUri, languageManifest, releasesRoot, releaseDirectory);
             installed = true;
         }
@@ -154,11 +156,11 @@ final class RemoteTranslationService {
     private void installRelease(
         URI manifestUri,
         LanguageManifest languageManifest,
-        File releasesRoot,
-        File releaseDirectory
+        Filepath releasesRoot,
+        Filepath releaseDirectory
     ) throws IOException {
-        Files.createDirectories(releasesRoot.toPath());
-        Path stagingDirectory = Files.createTempDirectory(releasesRoot.toPath(), ".staging-");
+        releasesRoot.createDirectories();
+        Filepath stagingDirectory = releasesRoot.createTempDir(STAGING_PREFIX);
         boolean installed = false;
 
         try {
@@ -170,17 +172,16 @@ final class RemoteTranslationService {
                     manifestUri.resolve(remoteFile.url).toString(),
                     fileName
                 );
-                Path target = stagingDirectory.resolve(fileName);
-                downloadAndValidate(fileUri, target, remoteFile.sha256);
+                downloadAndValidate(fileUri, stagingDirectory.joinSegment(fileName), remoteFile.sha256);
             }
 
-            Files.writeString(stagingDirectory.resolve(".complete"), "ok\n", StandardCharsets.UTF_8);
-            moveDirectory(stagingDirectory, releaseDirectory.toPath());
+            stagingDirectory.joinSegment(".complete").write("ok\n");
+            moveDirectory(stagingDirectory, releaseDirectory);
             installed = true;
         } finally {
             if (!installed) {
                 try {
-                    deleteDirectory(stagingDirectory);
+                    deleteIfPresent(stagingDirectory);
                 } catch (IOException ignored) {
                     // Preserve the original download or validation failure.
                 }
@@ -197,7 +198,7 @@ final class RemoteTranslationService {
         }
     }
 
-    private void downloadAndValidate(URI uri, Path target, String expectedSha256) throws IOException {
+    private void downloadAndValidate(URI uri, Filepath target, String expectedSha256) throws IOException {
         MessageDigest digest = sha256Digest();
         Request request = request(uri);
 
@@ -206,7 +207,7 @@ final class RemoteTranslationService {
             long total = 0;
 
             try (InputStream input = body.byteStream();
-                 OutputStream output = Files.newOutputStream(target)) {
+                 OutputStream output = target.openOutputStream()) {
                 byte[] buffer = new byte[16 * 1024];
                 int read;
                 while ((read = input.read(buffer)) != -1) {
@@ -225,7 +226,7 @@ final class RemoteTranslationService {
             throw new IOException("SHA-256 divergente para " + target.getFileName());
         }
 
-        try (InputStream input = new FileInputStream(target.toFile())) {
+        try (InputStream input = target.openInputStream()) {
             TranslationLookupHelper.parseJsonMapStrict(input);
         } catch (Exception e) {
             throw new IOException("JSON de traducao invalido: " + target.getFileName(), e);
@@ -281,30 +282,30 @@ final class RemoteTranslationService {
         return body;
     }
 
-    private void activateRelease(File languageRoot, String releaseId) throws IOException {
-        Files.createDirectories(languageRoot.toPath());
-        Path temporary = Files.createTempFile(languageRoot.toPath(), "active-", ".tmp");
+    private void activateRelease(Filepath languageRoot, String releaseId) throws IOException {
+        languageRoot.createDirectories();
+        Filepath temporary = languageRoot.createTempFile("active-", ".tmp");
         try {
-            Files.writeString(temporary, releaseId + "\n", StandardCharsets.UTF_8);
-            moveFile(temporary, new File(languageRoot, "active.txt").toPath());
+            temporary.write(releaseId + "\n");
+            moveFile(temporary, languageRoot.joinSegment("active.txt"));
         } finally {
-            Files.deleteIfExists(temporary);
+            temporary.deleteIfExists();
         }
     }
 
-    private boolean isCompleteRelease(File directory) {
-        if (!new File(directory, ".complete").isFile()) {
+    private boolean isCompleteRelease(Filepath directory) {
+        if (!directory.joinSegment(".complete").isFile()) {
             return false;
         }
         for (String fileName : REQUIRED_FILES) {
-            if (!new File(directory, fileName).isFile()) {
+            if (!directory.joinSegment(fileName).isFile()) {
                 return false;
             }
         }
         return true;
     }
 
-    private boolean isValidRelease(File directory, LanguageManifest languageManifest) {
+    private boolean isValidRelease(Filepath directory, LanguageManifest languageManifest) {
         if (!isCompleteRelease(directory)) {
             return false;
         }
@@ -313,7 +314,7 @@ final class RemoteTranslationService {
             for (String fileName : REQUIRED_FILES) {
                 TranslationFile remoteFile = languageManifest.files.get(fileName);
                 validateFileEntry(fileName, remoteFile);
-                if (!sha256(new File(directory, fileName))
+                if (!sha256(directory.joinSegment(fileName))
                     .equals(remoteFile.sha256.toLowerCase(Locale.ROOT))) {
                     return false;
                 }
@@ -334,7 +335,7 @@ final class RemoteTranslationService {
             digest.update(remoteFile.sha256.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
         }
 
-        String safeVersion = version.replaceAll("[^A-Za-z0-9._-]", "_");
+        String safeVersion = version.replaceAll("[^A-Za-z0-9._-]", "_").replaceAll("\\.+$", "");
         if (safeVersion.isEmpty()) {
             safeVersion = "release";
         }
@@ -354,7 +355,7 @@ final class RemoteTranslationService {
     }
 
     private String requireSafeName(String value, String label) throws IOException {
-        if (value == null || !SAFE_NAME.matcher(value.trim()).matches()) {
+        if (value == null || !SAFE_NAME.matcher(value.trim()).matches() || value.trim().endsWith(".")) {
             throw new IOException(label + " invalido");
         }
         return value.trim();
@@ -376,9 +377,9 @@ final class RemoteTranslationService {
         return result.toString();
     }
 
-    private String sha256(File file) throws IOException {
+    private String sha256(Filepath file) throws IOException {
         MessageDigest digest = sha256Digest();
-        try (InputStream input = new FileInputStream(file)) {
+        try (InputStream input = file.openInputStream()) {
             byte[] buffer = new byte[16 * 1024];
             int read;
             while ((read = input.read(buffer)) != -1) {
@@ -388,55 +389,56 @@ final class RemoteTranslationService {
         return toHex(digest.digest());
     }
 
-    private void moveDirectory(Path source, Path target) throws IOException {
-        if (Files.exists(target)) {
-            deleteDirectory(source);
-            return;
-        }
-        try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(source, target);
+    private static String readString(Filepath file) throws IOException {
+        try (BufferedReader reader = file.openBufferedReader()) {
+            return reader.lines().collect(Collectors.joining("\n"));
         }
     }
 
-    private void moveFile(Path source, Path target) throws IOException {
-        try {
-            Files.move(
-                source,
-                target,
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING
-            );
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+    /** Filepath.deleteRecursively falla si la carpeta no existe; el código original lo toleraba. */
+    private static void deleteIfPresent(Filepath directory) throws IOException {
+        if (directory.exists()) {
+            directory.deleteRecursively();
         }
     }
 
-    private void deleteDirectory(Path directory) throws IOException {
-        if (!Files.exists(directory)) {
+    private void moveDirectory(Filepath source, Filepath target) throws IOException {
+        if (target.exists()) {
+            deleteIfPresent(source);
             return;
         }
-        try (Stream<Path> paths = Files.walk(directory)) {
-            List<Path> orderedPaths = paths
-                .sorted(Comparator.reverseOrder())
+        try {
+            source.moveTo(target, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            source.moveTo(target);
+        }
+    }
+
+    private void moveFile(Filepath source, Filepath target) throws IOException {
+        try {
+            source.moveTo(target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException e) {
+            source.moveTo(target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private void deleteOldReleases(Filepath releasesRoot, String activeReleaseId) {
+        if (!releasesRoot.isDirectory()) {
+            return;
+        }
+        List<Filepath> releases;
+        try (Stream<Filepath> children = releasesRoot.walk(1)) {
+            releases = children
+                .filter(path -> !path.equals(releasesRoot) && path.isDirectory())
                 .collect(Collectors.toList());
-            for (Path path : orderedPaths) {
-                Files.deleteIfExists(path);
-            }
-        }
-    }
-
-    private void deleteOldReleases(File releasesRoot, String activeReleaseId) {
-        File[] releases = releasesRoot.listFiles(File::isDirectory);
-        if (releases == null) {
+        } catch (IOException e) {
             return;
         }
-        for (File release : releases) {
-            if (!release.getName().equals(activeReleaseId)
-                && !release.getName().startsWith(".staging-")) {
+        for (Filepath release : releases) {
+            String name = release.getFileName();
+            if (!name.equals(activeReleaseId) && !name.startsWith(STAGING_PREFIX)) {
                 try {
-                    deleteDirectory(release.toPath());
+                    deleteIfPresent(release);
                 } catch (IOException ignored) {
                     // Old cache cleanup must not invalidate an activated release.
                 }
@@ -446,10 +448,10 @@ final class RemoteTranslationService {
 
     static final class UpdateResult {
         private final boolean changed;
-        private final File activeDirectory;
+        private final Filepath activeDirectory;
         private final String version;
 
-        private UpdateResult(boolean changed, File activeDirectory, String version) {
+        private UpdateResult(boolean changed, Filepath activeDirectory, String version) {
             this.changed = changed;
             this.activeDirectory = activeDirectory;
             this.version = version;
@@ -459,7 +461,7 @@ final class RemoteTranslationService {
             return changed;
         }
 
-        File getActiveDirectory() {
+        Filepath getActiveDirectory() {
             return activeDirectory;
         }
 
