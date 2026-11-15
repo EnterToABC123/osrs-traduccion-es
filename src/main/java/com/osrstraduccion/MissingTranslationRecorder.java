@@ -31,6 +31,8 @@ final class MissingTranslationRecorder
     private static final Pattern HAS_WORD = Pattern.compile("[A-Za-z]{3,}");
     /** Solo números, signos y unidades ("1,234", "50%", "x3", "12:30"). */
     private static final Pattern ONLY_NUMBERS = Pattern.compile("^[\\d\\s.,:;/%()+\\-x*#kmKM]+$");
+    /** Tildes, ñ o signos de apertura: el texto ya está traducido (p. ej. por el servicio de bienvenida). */
+    private static final Pattern ALREADY_TRANSLATED = Pattern.compile("[áéíóúñÁÉÍÓÚÑ¿¡ãõçÃÕÇ]");
 
     private final Filepath directory;
     private final Filepath file;
@@ -69,7 +71,8 @@ final class MissingTranslationRecorder
         }
         String clean = text.trim();
         if (clean.length() < 4 || clean.length() > MAX_TEXT_LENGTH
-            || !HAS_WORD.matcher(clean).find() || ONLY_NUMBERS.matcher(clean).matches())
+            || !HAS_WORD.matcher(clean).find() || ONLY_NUMBERS.matcher(clean).matches()
+            || ALREADY_TRANSLATED.matcher(clean).find())
         {
             return;
         }

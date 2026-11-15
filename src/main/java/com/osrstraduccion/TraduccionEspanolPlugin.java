@@ -1006,9 +1006,18 @@ public class TraduccionEspanolPlugin extends Plugin {
 
         String translation = TranslationLookupHelper.findTranslation(domain.translations, domain.regexPatterns, lookup);
 
-        // O chat (CHAT_OVERLAY) também mostra mensagens de outros jogadores: elas não são registradas aqui.
-        // As mensagens do jogo são registradas em onChatMessage, filtradas por tipo.
-        if (translation == null && interfaceId != CHAT_OVERLAY) {
+        // La ventana del chat (162) también muestra mensajes que el juego escribe directamente en ella, sin
+        // evento ChatMessage (p. ej. "You have herb boxes waiting to be collected at NMZ." al entrar).
+        // Esos están en el diccionario de mensajes del juego, no en el de diálogos.
+        if (translation == null && interfaceId == CHATBOX_UNIVERSE
+            && !state.translationGameMessageValues.contains(lookup)) {
+            translation = TranslationLookupHelper.findTranslation(
+                state.translationsGameMessage, state.regexGameMessageTranslations, lookup);
+        }
+
+        // El chat (CHAT_OVERLAY y la ventana 162) también muestra mensajes de otros jugadores: esos nunca
+        // se registran. Los mensajes del juego se registran en onChatMessage, filtrados por tipo.
+        if (translation == null && interfaceId != CHAT_OVERLAY && interfaceId != CHATBOX_UNIVERSE) {
             recordMissingTranslation(dictionaryFileName(domain.translations, state), "interfaz " + interfaceId, lookup);
         }
 
