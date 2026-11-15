@@ -1326,14 +1326,19 @@ public class TraduccionEspanolPlugin extends Plugin {
                 "chat " + event.getType(), clean);
             return;
         }
-        translation = colorPrefix + translation;
+        // Conserva los colores del original (números, nombres, mensajes enteros en rojo...), sean del juego
+        // o de otros plugins que escriben en el chat. Se usa </col> normal: el chat lo entiende bien.
+        String recolored = TranslationLookupHelper.reapplyColors(rawMessage, translation);
+        boolean colorsKept = !recolored.equals(translation);
+        translation = colorPrefix + recolored;
 
-        if (shouldDeferRichChatOverlayTranslation(translation)) {
-            translateInterface(CHAT_OVERLAY);
-            return;
+        if (!colorsKept) {
+            if (shouldDeferRichChatOverlayTranslation(translation)) {
+                translateInterface(CHAT_OVERLAY);
+                return;
+            }
+            translation = normalizeChatOverlayTags(translation);
         }
-
-        translation = normalizeChatOverlayTags(translation);
 
         log.debug("[ChatTranslate] type={} translatedLen={}", event.getType(), translation.length());
 

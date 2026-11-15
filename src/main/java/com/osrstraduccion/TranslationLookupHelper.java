@@ -212,6 +212,57 @@ final class TranslationLookupHelper
     private static final Pattern CHAT_COLOR_CODE = Pattern.compile("@[a-z][a-z0-9_]*@");
     private static final Pattern LEADING_CHAT_COLOR_CODES = Pattern.compile("^(?:@[a-z][a-z0-9_]*@)+");
 
+    private static final Pattern COLORED_SEGMENT = Pattern.compile(
+        "(<col=[0-9a-fA-F]{6}>)(.*?)(</col>|(?=<col=)|$)", Pattern.DOTALL);
+
+    /**
+     * Recoloca en la traducción las partes coloreadas del mensaje original.
+     * Ej.: original "GE average <col=00ff00>1,793</col>" y traducción "promedio GE 1,793"
+     * -> "promedio GE <col=00ff00>1,793</col>". Solo recolorea textos que aparecen igual en la traducción
+     * (números, nombres, objetos que se dejan en inglés); el resto queda con el color normal.
+     */
+    static String reapplyColors(String original, String translation)
+    {
+        if (original == null || translation == null || !original.contains("<col="))
+        {
+            return translation;
+        }
+        if (translation.contains("<col="))
+        {
+            return translation; // la traducción ya trae sus propios colores
+        }
+        // Mensaje entero de un solo color (p. ej. avisos en rojo): la traducción entera con ese color
+        Matcher whole = Pattern.compile("^\\s*(<col=[0-9a-fA-F]{6}>)([^<]*)(</col>)?\\s*$").matcher(original);
+        if (whole.matches())
+        {
+            return whole.group(1) + translation + "</col>";
+        }
+        StringBuilder result = new StringBuilder();
+        int cursor = 0;
+        Matcher matcher = COLORED_SEGMENT.matcher(original);
+        while (matcher.find())
+        {
+            String text = HTML_TAG.matcher(matcher.group(2)).replaceAll("").trim();
+            if (text.isEmpty())
+            {
+                continue;
+            }
+            int at = translation.indexOf(text, cursor);
+            if (at < 0)
+            {
+                continue;
+            }
+            result.append(translation, cursor, at)
+                .append(matcher.group(1)).append(text).append("</col>");
+            cursor = at + text.length();
+        }
+        if (cursor == 0)
+        {
+            return translation;
+        }
+        return result.append(translation.substring(cursor)).toString();
+    }
+
     /** Remove códigos de cor do chat do jogo, como "@mes_hl_cya@" ou "@red@". */
     static String stripChatColorCodes(String text)
     {
