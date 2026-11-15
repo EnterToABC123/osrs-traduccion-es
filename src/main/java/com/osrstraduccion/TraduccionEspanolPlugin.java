@@ -25,6 +25,7 @@ import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
@@ -139,6 +140,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     );
     @Inject private Client client;
     @Inject private ClientThread clientThread;
+    @Inject private ChatMessageManager chatMessageManager;
     @Inject private TraduccionEspanolConfig config;
     @Inject private Gson gson;
     @Inject private OkHttpClient httpClient;
@@ -1563,6 +1565,22 @@ public class TraduccionEspanolPlugin extends Plugin {
         event.setMessage(translation);
         client.refreshChat();
         diag("chat", chatDiagType(event.getType()), "traducido", rawMessage, translation);
+
+        // Los mensajes de otros plugins de RuneLite (p. ej. Daily Task Indicator: "You have herb boxes waiting
+        // to be collected at NMZ.") se añaden por ChatMessageManager, que después de este evento vuelve a
+        // escribir su texto original en inglés. Se reaplica la traducción justo después, con sus colores.
+        if (messageNode != null && event.getType() == ChatMessageType.CONSOLE) {
+            final String formatted = translation;
+            clientThread.invokeLater(() -> {
+                String current = messageNode.getRuneLiteFormatMessage();
+                if (current != null && !current.equals(formatted)) {
+                    messageNode.setRuneLiteFormatMessage(formatted);
+                    chatMessageManager.update(messageNode);
+                    client.refreshChat();
+                    diag("chat", "CONSOLE (reaplicado)", "traducido", current, formatted);
+                }
+            });
+        }
     }
 
     /** Tipo de mensaje para el diario; marca los que llegan antes de que cargue el personaje. */

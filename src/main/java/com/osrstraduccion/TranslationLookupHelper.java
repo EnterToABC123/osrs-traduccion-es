@@ -247,9 +247,11 @@ final class TranslationLookupHelper
     private static final Pattern CHAT_COLOR_CODE = Pattern.compile("@[a-z][a-z0-9_]*@");
     private static final Pattern LEADING_CHAT_COLOR_CODES = Pattern.compile("^(?:@[a-z][a-z0-9_]*@)+");
 
-    private static final Pattern WHOLE_COLORED = Pattern.compile("^\\s*(<col=[0-9a-fA-F]{6}>)([^<]*)(</col>)?\\s*$");
+    // Colores del juego (<col=ff0000>) y de RuneLite (<colHIGHLIGHT>, <colNORMAL>), usados por otros plugins
+    private static final String COLOR_TAG = "<col(?:=[0-9a-fA-F]{6}|[A-Z]+)>";
+    private static final Pattern WHOLE_COLORED = Pattern.compile("^\\s*(" + COLOR_TAG + ")([^<]*)(</col>)?\\s*$");
     private static final Pattern COLORED_SEGMENT = Pattern.compile(
-        "(<col=[0-9a-fA-F]{6}>)(.*?)(</col>|(?=<col=)|$)", Pattern.DOTALL);
+        "(" + COLOR_TAG + ")(.*?)(</col>|(?=<col)|$)", Pattern.DOTALL);
 
     /**
      * Recoloca en la traducción las partes coloreadas del mensaje original.
@@ -259,11 +261,11 @@ final class TranslationLookupHelper
      */
     static String reapplyColors(String original, String translation)
     {
-        if (original == null || translation == null || !original.contains("<col="))
+        if (original == null || translation == null || !original.contains("<col"))
         {
             return translation;
         }
-        if (translation.contains("<col="))
+        if (translation.contains("<col"))
         {
             return translation; // la traducción ya trae sus propios colores
         }
