@@ -352,6 +352,11 @@ public class TraduccionEspanolPlugin extends Plugin {
 
     private void recordMissingTranslation(String fileName, String source, String text) {
         MissingTranslationRecorder recorder = missingTranslationRecorder;
+        // El nombre del propio personaje (cabecera de los diálogos) no es un texto a traducir
+        if (recorder != null && client.getLocalPlayer() != null
+            && text != null && text.trim().equalsIgnoreCase(client.getLocalPlayer().getName())) {
+            return;
+        }
         if (recorder != null) {
             recorder.record(fileName, source, text);
         }
@@ -554,10 +559,11 @@ public class TraduccionEspanolPlugin extends Plugin {
 
     private boolean isLoginScreenState() {
         GameState state = client.getGameState();
+        // HOPPING no cuenta: al cambiar de mundo están visibles las interfaces del juego, no las del login,
+        // y marcarlas como "login" hacía que luego se buscaran solo en el diccionario de bienvenida.
         return state == GameState.LOGIN_SCREEN
             || state == GameState.LOGIN_SCREEN_AUTHENTICATOR
-            || state == GameState.LOGGING_IN
-            || state == GameState.HOPPING;
+            || state == GameState.LOGGING_IN;
     }
 
     private void inspectLoginGroup(int groupId) {
@@ -584,6 +590,14 @@ public class TraduccionEspanolPlugin extends Plugin {
     @Subscribe
     public void onGameStateChanged(GameStateChanged event) {
         GameState state = event.getGameState();
+        if (state == GameState.LOGGED_IN) {
+            // Ya dentro del juego: las interfaces marcadas durante el login dejan de serlo. Si no, el banco,
+            // las estadísticas, etc. se seguirían buscando en el diccionario de bienvenida y no se traducirían.
+            loginInterfaceGroups.clear();
+            inspectedLoginGroups.clear();
+            loginInspectionDeadline = 0L;
+            return;
+        }
         if (!config.enableWelcome() || !isLoginScreenState()) {
             return;
         }
