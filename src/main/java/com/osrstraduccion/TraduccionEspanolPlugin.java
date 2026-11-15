@@ -61,6 +61,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     private static final int CHATBOX_UNIVERSE = 162;
     private static final int DIALOG_MESSAGE = 229;
     private static final int CHAT_OVERLAY = 263;
+    private static final int MUSIC_PLAYER = 239;
     private static final int PLAYER_DESIGN = 679;
     private static final int TUTORIAL_PLAYER_EXPERIENCE = 929;
     private static final int TUTORIAL_DISPLAY_NAME = 558;
@@ -1109,6 +1110,15 @@ public class TraduccionEspanolPlugin extends Plugin {
                 state.translationsGameMessage, state.regexGameMessageTranslations, lookup);
         }
 
+        // Ventanas generales: botones y etiquetas cortas ("Teleport", "Slash", "Grand Exchange", "Membership: 361
+        // days left") suelen estar traducidos en los diccionarios de menús, ajustes o bienvenida.
+        if (translation == null && domain.translations == state.translations
+            && interfaceId != CHAT_OVERLAY && interfaceId != CHATBOX_UNIVERSE
+            && interfaceId != MUSIC_PLAYER) {
+            // (En el reproductor de música son títulos de canciones: "Dark", "Dream"... no se tocan)
+            translation = findInOtherDictionaries(state, lookup);
+        }
+
         // El chat (CHAT_OVERLAY y la ventana 162) también muestra mensajes de otros jugadores: esos nunca
         // se registran. Los mensajes del juego se registran en onChatMessage, filtrados por tipo.
         if (translation == null && interfaceId != CHAT_OVERLAY && interfaceId != CHATBOX_UNIVERSE) {
@@ -1124,6 +1134,26 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         return translation == null ? null : preserveStartTags(originalText) + numberingPrefix + translation;
+    }
+
+    /** Busca un texto de ventana en menús, ajustes, bienvenida y misiones (solo traducciones reales). */
+    private static String findInOtherDictionaries(TranslationState state, String lookup) {
+        String found = realTranslation(state.translationsMenu.get(lookup), lookup);
+        if (found == null) {
+            found = realTranslation(state.translationsSettings.get(lookup), lookup);
+        }
+        if (found == null) {
+            found = realTranslation(TranslationLookupHelper.findTranslation(
+                state.translationsWelcome, state.regexWelcomeTranslations, lookup), lookup);
+        }
+        if (found == null) {
+            found = realTranslation(state.translationsQuests.get(lookup), lookup);
+        }
+        return found;
+    }
+
+    private static String realTranslation(String translation, String original) {
+        return translation == null || translation.equals(original) ? null : translation;
     }
 
     private String normalizeChatOverlayTags(String text) {
