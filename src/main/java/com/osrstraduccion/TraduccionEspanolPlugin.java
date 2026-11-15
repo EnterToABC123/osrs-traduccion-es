@@ -883,6 +883,8 @@ public class TraduccionEspanolPlugin extends Plugin {
 
             String translated = translateWidgetText(text, interfaceId);
             if (translated != null) {
+                // Conserva los colores del original (p. ej. "360" en verde en la pantalla de bienvenida)
+                translated = TranslationLookupHelper.reapplyColors(text, translated);
                 int canvasW = client.getCanvasWidth();
                 int canvasH = client.getCanvasHeight();
                 log.debug(
@@ -1370,7 +1372,9 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (translation == null && isNpcSpeech(event.getType())) {
             translation = translateNpcSpeech(clean, state);
         }
-        if (config.developerMode() && client.getGameState() != GameState.LOGGED_IN) {
+        if (config.developerMode() && (client.getGameState() != GameState.LOGGED_IN || client.getLocalPlayer() == null)) {
+            log.info("[ChatLoginRaw] raw='{}' node={}", rawMessage, event.getMessageNode() == null ? "null"
+                : "'" + event.getMessageNode().getValue() + "'");
             // Diagnóstico: mensajes que llegan mientras se inicia sesión (avisos rojos de NMZ, Zaff, etc.)
             log.info("[ChatLogin] estado={} type={} traducido={} texto='{}'", client.getGameState(),
                 event.getType(), translation != null, clean.length() > 80 ? clean.substring(0, 80) + "..." : clean);
@@ -1404,6 +1408,9 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         event.setMessage(translation);
         client.refreshChat();
+        if (config.developerMode() && client.getLocalPlayer() == null) {
+            log.info("[ChatLoginSet] '{}'", translation);
+        }
     }
 
     /** Busca una frase del propio personaje en los textos sobre la cabeza y luego en diálogos. */
