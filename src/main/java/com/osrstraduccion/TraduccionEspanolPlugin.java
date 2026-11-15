@@ -645,6 +645,13 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (state == GameState.LOGGED_IN) {
             // Ya dentro del juego: las interfaces marcadas durante el login dejan de serlo. Si no, el banco,
             // las estadísticas, etc. se seguirían buscando en el diccionario de bienvenida y no se traducirían.
+            // Las que el juego cargó durante el login (estadísticas, combate, cuenta...) se vuelven a traducir
+            // en el primer tick ya dentro, ahora con su diccionario correcto.
+            for (int groupId : loginInterfaceGroups) {
+                if (groupId != WELCOME_SCREEN) {
+                    groupsToRetranslate.add(groupId);
+                }
+            }
             loginInterfaceGroups.clear();
             inspectedLoginGroups.clear();
             loginInspectionDeadline = 0L;
@@ -661,8 +668,16 @@ public class TraduccionEspanolPlugin extends Plugin {
         inspectVisibleLoginGroups();
     }
 
+    private final Set<Integer> groupsToRetranslate = new HashSet<>();
+
     @Subscribe
     public void onGameTick(GameTick event) {
+        if (!groupsToRetranslate.isEmpty()) {
+            for (int groupId : groupsToRetranslate) {
+                translateInterface(groupId);
+            }
+            groupsToRetranslate.clear();
+        }
         if (!config.enableWelcome() || !isLoginScreenState()) {
             return;
         }
@@ -1012,7 +1027,10 @@ public class TraduccionEspanolPlugin extends Plugin {
         // se registran. Los mensajes del juego se registran en onChatMessage, filtrados por tipo.
         // Las listas de amigos e ignorados muestran nombres de otras personas: tampoco se registran.
         boolean mayShowOtherPeople = interfaceId == CHAT_OVERLAY || interfaceId == CHATBOX_UNIVERSE
-            || interfaceId == FRIENDS_LIST || interfaceId == IGNORE_LIST;
+            || interfaceId == FRIENDS_LIST || interfaceId == IGNORE_LIST
+            // Ventanas del juego cargadas durante el login: se buscan en bienvenida solo de paso
+            // (se vuelven a traducir al entrar), así que sus fallos no cuentan
+            || (interfaceId != WELCOME_SCREEN && loginInterfaceGroups.contains(interfaceId));
         if (translation == null && !mayShowOtherPeople) {
             recordMissingTranslation(dictionaryFileName(domain.translations, state), "interfaz " + interfaceId, lookup);
         }
