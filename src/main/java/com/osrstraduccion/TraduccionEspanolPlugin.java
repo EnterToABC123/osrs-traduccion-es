@@ -597,6 +597,7 @@ public class TraduccionEspanolPlugin extends Plugin {
             loginInterfaceGroups.clear();
             inspectedLoginGroups.clear();
             loginInspectionDeadline = 0L;
+            chatSweepTicks = CHAT_SWEEP_TICKS;
             return;
         }
         if (!config.enableWelcome() || !isLoginScreenState()) {
@@ -610,8 +611,52 @@ public class TraduccionEspanolPlugin extends Plugin {
         inspectVisibleLoginGroups();
     }
 
+    // Algunos avisos al iniciar sesión (herb boxes de la NMZ, battlestaves de Zaff...) entran en el chat sin
+    // evento ChatMessage. Durante unos ticks tras entrar se repasa el chat y se traducen los que sigan en inglés.
+    private static final int CHAT_SWEEP_TICKS = 10;
+    private int chatSweepTicks;
+
+    private void sweepChatMessages() {
+        if (!config.enableGameMessages() || client.getMessages() == null) {
+            return;
+        }
+        TranslationState state = translationState;
+        boolean changed = false;
+        for (MessageNode node : client.getMessages()) {
+            if (node == null || node.getType() == null || isPlayerChat(node.getType())
+                || isNpcSpeech(node.getType()) || !shouldTranslateChatMessage(node.getType())) {
+                continue;
+            }
+            String raw = node.getValue();
+            String clean = cleanText(TranslationLookupHelper.stripChatColorCodes(raw));
+            if (clean.isEmpty() || state.translationGameMessageValues.contains(clean)) {
+                continue;
+            }
+            String translation = TranslationLookupHelper.findTranslation(
+                state.translationsGameMessage, state.regexGameMessageTranslations, clean);
+            if (translation == null || translation.equals(clean)) {
+                continue;
+            }
+            String result = TranslationLookupHelper.leadingChatColorCodes(raw)
+                + TranslationLookupHelper.reapplyColors(raw, translation);
+            node.setValue(result);
+            node.setRuneLiteFormatMessage(result);
+            changed = true;
+            if (config.developerMode()) {
+                log.info("[ChatRepaso] type={} '{}' -> '{}'", node.getType(), clean, result);
+            }
+        }
+        if (changed) {
+            client.refreshChat();
+        }
+    }
+
     @Subscribe
     public void onGameTick(GameTick event) {
+        if (chatSweepTicks > 0) {
+            chatSweepTicks--;
+            sweepChatMessages();
+        }
         if (!config.enableWelcome() || !isLoginScreenState()) {
             return;
         }
