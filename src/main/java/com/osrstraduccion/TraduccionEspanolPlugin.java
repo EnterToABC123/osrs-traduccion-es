@@ -1108,12 +1108,22 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         Actor actor = event.getActor();
-        if (!(actor instanceof NPC)) {
+        String clean = normalizeLookupText(cleanText(event.getOverheadText()));
+        if (clean.length() <= 3) {
             return;
         }
 
-        String clean = normalizeLookupText(cleanText(event.getOverheadText()));
-        if (clean.length() <= 3) {
+        // Frases automáticas del propio personaje ("Aaah, nothing like a nice cuppa tea!"): solo si están en el
+        // diccionario. Nunca se tocan otros jugadores ni se registra lo que escribe el usuario.
+        if (actor != null && actor == client.getLocalPlayer()) {
+            String own = translateOwnScriptedSpeech(clean);
+            if (own != null) {
+                actor.setOverheadText(own);
+            }
+            return;
+        }
+
+        if (!(actor instanceof NPC)) {
             return;
         }
 
@@ -1251,6 +1261,21 @@ public class TraduccionEspanolPlugin extends Plugin {
             return;
         }
 
+        // Frases automáticas del propio personaje en el chat público: solo si están en el diccionario.
+        if (isOwnPublicChat(event)) {
+            String own = translateOwnScriptedSpeech(cleanText(event.getMessage()));
+            if (own != null) {
+                MessageNode node = event.getMessageNode();
+                if (node != null) {
+                    node.setValue(own);
+                    node.setRuneLiteFormatMessage(own);
+                }
+                event.setMessage(own);
+                client.refreshChat();
+            }
+            return;
+        }
+
         if (!shouldTranslateChatMessage(event.getType())) {
             return;
         }
@@ -1308,6 +1333,26 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         event.setMessage(translation);
         client.refreshChat();
+    }
+
+    /** Busca una frase del propio personaje en los textos sobre la cabeza y luego en diálogos. */
+    private String translateOwnScriptedSpeech(String text) {
+        TranslationState state = translationState;
+        String lookup = normalizeLookupText(text);
+        String translation = TranslationLookupHelper.findTranslation(state.translationsOverhead, lookup);
+        if (translation == null) {
+            translation = TranslationLookupHelper.findTranslation(state.translations, lookup);
+        }
+        return translation;
+    }
+
+    private boolean isOwnPublicChat(ChatMessage event) {
+        if (event.getType() != ChatMessageType.PUBLICCHAT || client.getLocalPlayer() == null) {
+            return false;
+        }
+        String name = event.getName() == null ? "" : cleanText(event.getName()).replace(' ', ' ').trim();
+        String own = client.getLocalPlayer().getName();
+        return own != null && name.equalsIgnoreCase(own.replace(' ', ' ').trim());
     }
 
     private static boolean isNpcSpeech(ChatMessageType type) {
