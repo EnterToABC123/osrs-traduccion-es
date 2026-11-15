@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -1189,12 +1190,22 @@ public class TraduccionEspanolPlugin extends Plugin {
             return;
         }
 
-        String cleanOption = HTML_TAG.matcher(option).replaceAll("").trim();
+        // El juego a veces separa palabras con espacio no separable ("Take-from Fishing")
+        String spaced = option.replace(' ', ' ');
+        String cleanOption = HTML_TAG.matcher(spaced).replaceAll("").replaceAll("\\s+", " ").trim();
         String translation = translationState.translationsMenu.get(cleanOption);
         if (translation != null && !translation.equals(cleanOption)) {
-            entry.setOption(option.replaceAll(Pattern.quote(cleanOption), Matcher.quoteReplacement(translation)));
+            String replaced = spaced.replaceAll(Pattern.quote(cleanOption), Matcher.quoteReplacement(translation));
+            entry.setOption(replaced.equals(spaced) ? translation : replaced);
+        } else if (translation == null && config.developerMode()
+            && !translationState.translationMenuValues.contains(cleanOption)
+            && loggedMissingMenuOptions.add(cleanOption)) {
+            log.info("[MenuSinTraducir] '{}' (original='{}')", cleanOption,
+                option.replace(" ", "<nbsp>"));
         }
     }
+
+    private final Set<String> loggedMissingMenuOptions = ConcurrentHashMap.newKeySet();
 
     private void restoreEnglishMenu(Menu menu) {
         if (menu == null) {
