@@ -1272,8 +1272,13 @@ public class TraduccionEspanolPlugin extends Plugin {
                 translation = translation.substring(colorPrefix.length());
             }
         }
+        if (translation == null && isNpcSpeech(event.getType())) {
+            translation = translateNpcSpeech(clean, state);
+        }
         if (translation == null) {
-            recordMissingTranslation("translations_game_message.json", "chat " + event.getType(), clean);
+            recordMissingTranslation(
+                isNpcSpeech(event.getType()) ? "translations.json" : "translations_game_message.json",
+                "chat " + event.getType(), clean);
             return;
         }
         translation = colorPrefix + translation;
@@ -1294,6 +1299,35 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         event.setMessage(translation);
         client.refreshChat();
+    }
+
+    private static boolean isNpcSpeech(ChatMessageType type) {
+        return type == ChatMessageType.NPC_SAY || type == ChatMessageType.DIALOG;
+    }
+
+    /**
+     * Lo que dice un NPC suele estar en el diccionario de diálogos o en el de textos sobre la cabeza,
+     * no en el de mensajes del juego. Los mensajes DIALOG llegan como "Nombre|texto": se traduce solo el texto.
+     */
+    private String translateNpcSpeech(String text, TranslationState state) {
+        String prefix = "";
+        String body = text;
+        int bar = text.indexOf('|');
+        if (bar > 0 && bar < 40) {
+            prefix = text.substring(0, bar + 1);
+            body = text.substring(bar + 1).trim();
+        }
+        String lookup = normalizeLookupText(body);
+        if (state.translationValues.contains(lookup) || state.translationsOverhead.containsValue(lookup)) {
+            return null; // ya está en español
+        }
+        String translation = TranslationLookupHelper.findTranslation(
+            state.translations, state.regexTranslations, lookup);
+        if (translation == null) {
+            translation = TranslationLookupHelper.findTranslation(
+                state.translationsOverhead, state.regexOverheadTranslations, lookup);
+        }
+        return translation == null ? null : prefix + translation;
     }
 
     private boolean shouldDeferRichChatOverlayTranslation(String translation) {
@@ -1329,6 +1363,9 @@ public class TraduccionEspanolPlugin extends Plugin {
             case ITEM_EXAMINE:
             case NPC_EXAMINE:
             case OBJECT_EXAMINE:
+            // NPCs hablando en el chat ("Eyatlalli: ...") y el historial de diálogos
+            case NPC_SAY:
+            case DIALOG:
                 return true;
             case WELCOME:
                 return config.enableWelcome();
