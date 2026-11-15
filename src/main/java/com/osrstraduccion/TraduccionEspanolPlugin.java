@@ -177,6 +177,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         );
         reloadTranslations();
         updateMissingTranslationRecorder();
+        diag("sesion", null, "info", "plugin iniciado", null);
         menuOpenedTranslationSubscriber = eventBus.register(
             MenuOpened.class,
             event -> {
@@ -205,6 +206,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         stopLocalTranslationHotReload();
         stopMissingTranslationRecorder();
+        stopDiagnosticJournal();
         eventBus.unregister(menuOpenedTranslationSubscriber);
         menuOpenedTranslationSubscriber = null;
         remoteTranslationService = null;
@@ -341,6 +343,48 @@ public class TraduccionEspanolPlugin extends Plugin {
         missingTranslationRecorder = new MissingTranslationRecorder(
             base.joinSegment("sem-traducao"), selectedLanguageFolder(), gson);
         log.info("Registrando textos sem traducao em {}", missingTranslationRecorder.getFile());
+    }
+
+    private volatile DiagnosticJournal diagnosticJournal;
+
+    /** Diario de diagnóstico: solo en modo desarrollador. Se crea al primer uso. */
+    private void diag(String event, String type, String status, String original, String result) {
+        DiagnosticJournal journal = diagnosticJournalIfEnabled();
+        if (journal != null) {
+            journal.write(event, type, status, original, result);
+        }
+    }
+
+    private void diagOnce(String event, String type, String status, String original, String result) {
+        DiagnosticJournal journal = diagnosticJournalIfEnabled();
+        if (journal != null) {
+            journal.writeOnce(event, type, status, original, result);
+        }
+    }
+
+    private DiagnosticJournal diagnosticJournalIfEnabled() {
+        if (!config.developerMode() || dataDirectory == null) {
+            return null;
+        }
+        DiagnosticJournal journal = diagnosticJournal;
+        if (journal == null) {
+            synchronized (this) {
+                if (diagnosticJournal == null) {
+                    diagnosticJournal = new DiagnosticJournal(dataDirectory.joinSegment("diagnostico"), gson);
+                    log.info("Diario de diagnostico en {}", diagnosticJournal.getFile());
+                }
+                journal = diagnosticJournal;
+            }
+        }
+        return journal;
+    }
+
+    private void stopDiagnosticJournal() {
+        DiagnosticJournal journal = diagnosticJournal;
+        diagnosticJournal = null;
+        if (journal != null) {
+            journal.shutDown();
+        }
     }
 
     private void stopMissingTranslationRecorder() {
@@ -591,6 +635,9 @@ public class TraduccionEspanolPlugin extends Plugin {
     @Subscribe
     public void onGameStateChanged(GameStateChanged event) {
         GameState state = event.getGameState();
+        if (state != GameState.LOADING) {
+            diag("sesion", null, "info", "estado del juego: " + state, null);
+        }
         if (state == GameState.LOGGED_IN) {
             // Ya dentro del juego: las interfaces marcadas durante el login dejan de serlo. Si no, el banco,
             // las estadísticas, etc. se seguirían buscando en el diccionario de bienvenida y no se traducirían.
@@ -635,6 +682,7 @@ public class TraduccionEspanolPlugin extends Plugin {
             String translation = TranslationLookupHelper.findTranslation(
                 state.translationsGameMessage, state.regexGameMessageTranslations, clean);
             if (translation == null || translation.equals(clean)) {
+                diagOnce("repaso", String.valueOf(node.getType()), "sin_traducir", raw, null);
                 continue;
             }
             String result = TranslationLookupHelper.leadingChatColorCodes(raw)
@@ -642,9 +690,7 @@ public class TraduccionEspanolPlugin extends Plugin {
             node.setValue(result);
             node.setRuneLiteFormatMessage(result);
             changed = true;
-            if (config.developerMode()) {
-                log.info("[ChatRepaso] type={} '{}' -> '{}'", node.getType(), clean, result);
-            }
+            diag("repaso", String.valueOf(node.getType()), "traducido", raw, result);
         }
         if (changed) {
             client.refreshChat();
@@ -1068,6 +1114,10 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (translation == null && interfaceId != CHAT_OVERLAY && interfaceId != CHATBOX_UNIVERSE) {
             recordMissingTranslation(dictionaryFileName(domain.translations, state), "interfaz " + interfaceId, lookup);
         }
+        if (interfaceId != CHAT_OVERLAY && interfaceId != CHATBOX_UNIVERSE) {
+            diagOnce("interfaz", interfaceId + " " + dictionaryFileName(domain.translations, state),
+                translation == null ? "sin_traducir" : "traducido", originalText, translation);
+        }
 
         if (translation != null && interfaceId == CHAT_OVERLAY) {
             translation = normalizeChatOverlayTags(translation);
@@ -1183,8 +1233,10 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (translation != null) {
             actor.setOverheadText(translation);
             log.debug("[OverheadTranslate] '{}' -> '{}'", clean, translation);
+            diagOnce("overhead", actor.getName(), "traducido", clean, translation);
         } else if (!translationState.translationsOverhead.containsValue(clean)) {
             recordMissingTranslation("translations_overhead.json", "overhead", clean);
+            diagOnce("overhead", actor.getName(), "sin_traducir", clean, null);
         }
     }
 
@@ -1247,9 +1299,13 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (translation != null && !translation.equals(cleanOption)) {
             String replaced = spaced.replaceAll(Pattern.quote(cleanOption), Matcher.quoteReplacement(translation));
             entry.setOption(replaced.equals(spaced) ? translation : replaced);
+        } else if (translation != null) {
+            // En el diccionario, pero "traducida" igual que en inglés
+            diagOnce("menu", null, "igual_al_ingles", cleanOption, translation);
         } else if (translation == null && config.developerMode()
             && !translationState.translationMenuValues.contains(cleanOption)
             && loggedMissingMenuOptions.add(cleanOption)) {
+            diag("menu", null, "sin_traducir", option, null);
             log.info("[MenuSinTraducir] '{}' (original='{}')", cleanOption,
                 option.replace(" ", "<nbsp>"));
         }
@@ -1380,10 +1436,8 @@ public class TraduccionEspanolPlugin extends Plugin {
 
         if (!shouldTranslateChatMessage(event.getType())) {
             // Modo desarrollador: anota el tipo de los mensajes que no se traducen (nunca chats de jugadores)
-            if (config.developerMode() && !isPlayerChat(event.getType())) {
-                String sample = cleanText(event.getMessage());
-                log.info("[ChatIgnorado] type={} texto='{}'", event.getType(),
-                    sample.length() > 80 ? sample.substring(0, 80) + "..." : sample);
+            if (!isPlayerChat(event.getType())) {
+                diag("chat", chatDiagType(event.getType()), "ignorado", event.getMessage(), null);
             }
             return;
         }
@@ -1417,14 +1471,8 @@ public class TraduccionEspanolPlugin extends Plugin {
         if (translation == null && isNpcSpeech(event.getType())) {
             translation = translateNpcSpeech(clean, state);
         }
-        if (config.developerMode() && (client.getGameState() != GameState.LOGGED_IN || client.getLocalPlayer() == null)) {
-            log.info("[ChatLoginRaw] raw='{}' node={}", rawMessage, event.getMessageNode() == null ? "null"
-                : "'" + event.getMessageNode().getValue() + "'");
-            // Diagnóstico: mensajes que llegan mientras se inicia sesión (avisos rojos de NMZ, Zaff, etc.)
-            log.info("[ChatLogin] estado={} type={} traducido={} texto='{}'", client.getGameState(),
-                event.getType(), translation != null, clean.length() > 80 ? clean.substring(0, 80) + "..." : clean);
-        }
         if (translation == null) {
+            diag("chat", chatDiagType(event.getType()), "sin_traducir", rawMessage, null);
             recordMissingTranslation(
                 isNpcSpeech(event.getType()) ? "translations.json" : "translations_game_message.json",
                 "chat " + event.getType(), clean);
@@ -1438,6 +1486,7 @@ public class TraduccionEspanolPlugin extends Plugin {
 
         if (!colorsKept) {
             if (shouldDeferRichChatOverlayTranslation(translation)) {
+                diag("chat", chatDiagType(event.getType()), "traducido_en_ventana", rawMessage, translation);
                 translateInterface(CHAT_OVERLAY);
                 return;
             }
@@ -1453,9 +1502,16 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         event.setMessage(translation);
         client.refreshChat();
-        if (config.developerMode() && client.getLocalPlayer() == null) {
-            log.info("[ChatLoginSet] '{}'", translation);
+        diag("chat", chatDiagType(event.getType()), "traducido", rawMessage, translation);
+    }
+
+    /** Tipo de mensaje para el diario; marca los que llegan antes de que cargue el personaje. */
+    private String chatDiagType(ChatMessageType type) {
+        String name = String.valueOf(type);
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return name + " (" + client.getGameState() + ")";
         }
+        return client.getLocalPlayer() == null ? name + " (sin personaje)" : name;
     }
 
     /** Busca una frase del propio personaje en los textos sobre la cabeza y luego en diálogos. */
