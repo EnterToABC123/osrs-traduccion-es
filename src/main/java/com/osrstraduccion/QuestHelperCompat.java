@@ -1,6 +1,6 @@
 package com.osrstraduccion;
 
-import net.runelite.api.widgets.InterfaceID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.callback.ClientThread;
 
 import java.util.regex.Matcher;
@@ -16,7 +16,7 @@ final class QuestHelperCompat
 
     static void scheduleDialogTranslation(ClientThread clientThread, int interfaceId, Runnable task)
     {
-        if (interfaceId == InterfaceID.DIALOG_OPTION)
+        if (interfaceId == InterfaceID.CHATMENU)
         {
             clientThread.invokeLater(() -> clientThread.invokeLater(task));
         }

@@ -22,7 +22,7 @@ import net.runelite.api.events.OverheadTextChanged;
 import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.events.WidgetLoaded;
-import net.runelite.api.widgets.InterfaceID;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -76,7 +76,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     private static final int QUEST_JOURNAL = 119;
     private static final int ACHIEVEMENT_DIARY = 259;
     private static final int ACHIEVEMENT_DIARY_SCROLL = 741;
-    private static final int CLUE_SCROLL_TEXT = net.runelite.api.gameval.InterfaceID.TRAIL_CLUETEXT;
+    private static final int CLUE_SCROLL_TEXT = InterfaceID.TRAIL_CLUETEXT;
     private static final int WELCOME_SCREEN = 378;
     private static final int SETTINGS = 134;
     private static final int BANK_PIN = 213;
@@ -91,14 +91,14 @@ public class TraduccionEspanolPlugin extends Plugin {
     private static final int LOCAL_TRANSLATION_POLL_SECONDS = 2;
 
     private static final int[] DIALOG_INTERFACES = {
-        InterfaceID.DIALOG_NPC,
-        InterfaceID.DIALOG_PLAYER,
-        InterfaceID.DIALOG_OPTION,
-        InterfaceID.DIALOG_SPRITE,
+        InterfaceID.CHAT_LEFT,
+        InterfaceID.CHAT_RIGHT,
+        InterfaceID.CHATMENU,
+        InterfaceID.OBJECTBOX,
     };
 
     private static final int[] MAIN_TEXT_INTERFACES = {
-        InterfaceID.LEVEL_UP,
+        InterfaceID.LEVELUP_DISPLAY,
         DIALOG_MESSAGE,
     };
 
@@ -130,6 +130,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     };
 
     private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
     private static final Pattern BR_TAG = Pattern.compile("(?i)<br\\s*/?>");
     private static final Pattern START_TAGS = Pattern.compile("^(<str>|<col=[^>]+>)+");
     private static final Set<String> TRIVIAL_MENU_OPTIONS = Set.of(
@@ -647,7 +648,6 @@ public class TraduccionEspanolPlugin extends Plugin {
             loginInterfaceGroups.clear();
             inspectedLoginGroups.clear();
             loginInspectionDeadline = 0L;
-            chatSweepTicks = CHAT_SWEEP_TICKS;
             return;
         }
         if (!config.enableWelcome() || !isLoginScreenState()) {
@@ -661,51 +661,8 @@ public class TraduccionEspanolPlugin extends Plugin {
         inspectVisibleLoginGroups();
     }
 
-    // Algunos avisos al iniciar sesión (herb boxes de la NMZ, battlestaves de Zaff...) entran en el chat sin
-    // evento ChatMessage. Durante unos ticks tras entrar se repasa el chat y se traducen los que sigan en inglés.
-    private static final int CHAT_SWEEP_TICKS = 10;
-    private int chatSweepTicks;
-
-    private void sweepChatMessages() {
-        if (!config.enableGameMessages() || client.getMessages() == null) {
-            return;
-        }
-        TranslationState state = translationState;
-        boolean changed = false;
-        for (MessageNode node : client.getMessages()) {
-            if (node == null || node.getType() == null || isPlayerChat(node.getType())
-                || isNpcSpeech(node.getType()) || !shouldTranslateChatMessage(node.getType())) {
-                continue;
-            }
-            String raw = node.getValue();
-            String clean = cleanText(TranslationLookupHelper.stripChatColorCodes(raw));
-            if (clean.isEmpty() || state.translationGameMessageValues.contains(clean)) {
-                continue;
-            }
-            String translation = TranslationLookupHelper.findTranslation(
-                state.translationsGameMessage, state.regexGameMessageTranslations, clean);
-            if (translation == null || translation.equals(clean)) {
-                diagOnce("repaso", String.valueOf(node.getType()), "sin_traducir", raw, null);
-                continue;
-            }
-            String result = TranslationLookupHelper.leadingChatColorCodes(raw)
-                + TranslationLookupHelper.reapplyColors(raw, translation);
-            node.setValue(result);
-            node.setRuneLiteFormatMessage(result);
-            changed = true;
-            diag("repaso", String.valueOf(node.getType()), "traducido", raw, result);
-        }
-        if (changed) {
-            client.refreshChat();
-        }
-    }
-
     @Subscribe
     public void onGameTick(GameTick event) {
-        if (chatSweepTicks > 0) {
-            chatSweepTicks--;
-            sweepChatMessages();
-        }
         if (!config.enableWelcome() || !isLoginScreenState()) {
             return;
         }
@@ -915,7 +872,7 @@ public class TraduccionEspanolPlugin extends Plugin {
             return;
         }
 
-        MenuEntry[] menuEntries = client.getMenuEntries();
+        MenuEntry[] menuEntries = client.getMenu().getMenuEntries();
         if (menuEntries == null || menuEntries.length == 0) {
             return;
         }
@@ -938,13 +895,6 @@ public class TraduccionEspanolPlugin extends Plugin {
     }
 
     private void translateInterface(int interfaceId) {
-        if (interfaceId == ITEM_PREVIEW) {
-            log.debug("[ItemPreview] Traduzindo interface 203");
-        }
-        if (contains(SKILL_GUIDE_INTERFACES, interfaceId)) {
-            log.debug("[SkillGuide] traducao iniciada");
-        }
-
         for (int i = 0; i < 100; i++) {
             Widget widget = client.getWidget(interfaceId, i);
             if (widget != null) {
@@ -960,65 +910,14 @@ public class TraduccionEspanolPlugin extends Plugin {
 
         String text = widget.getText();
         if (text != null && !text.isEmpty()) {
-            if (interfaceId == ITEM_PREVIEW) {
-                log.debug("[ItemPreview] processando texto: {}", text);
-            }
-
-            int wBefore = widget.getWidth();
-            int hBefore = widget.getHeight();
-            int xBefore = widget.getRelativeX();
-            int yBefore = widget.getRelativeY();
-            int idBefore = widget.getId();
-            int parentId = widget.getParentId();
-            int lineHeightAntes = widget.getLineHeight();
-            int linesAntes = countLines(text);
-
-            applyLineHeightFix(widget, interfaceId, lineHeightAntes);
+            int lineHeightBefore = widget.getLineHeight();
+            applyLineHeightFix(widget, interfaceId, lineHeightBefore);
 
             String translated = translateWidgetText(text, interfaceId);
             if (translated != null) {
                 // Conserva los colores del original (p. ej. "360" en verde en la pantalla de bienvenida)
-                translated = TranslationLookupHelper.reapplyColors(text, translated);
-                int canvasW = client.getCanvasWidth();
-                int canvasH = client.getCanvasHeight();
-                log.debug(
-                    "[WidgetDebug] id={} parentId={} pos=({},{}) size=({},{}) "
-                        + "canvas=({},{}) textLen={} transLen={}",
-                    idBefore, parentId, xBefore, yBefore, wBefore, hBefore,
-                    canvasW, canvasH, text.length(), translated.length()
-                );
-                log.debug("[WidgetDebug] text='{}'", text.length() > 80 ? text.substring(0, 80) + "..." : text);
-                log.debug(
-                    "[WidgetDebug] trans='{}'",
-                    translated.length() > 80 ? translated.substring(0, 80) + "..." : translated
-                );
-                log.debug(
-                    "[LineHeightDebug] ANTES: id={} lineHeight={} linhas={}",
-                    idBefore, lineHeightAntes, linesAntes
-                );
-
-                widget.setText(translated);
-
-                int lineHeightDepois = widget.getLineHeight();
-                int linesDepois = countLines(translated);
-                log.debug(
-                    "[LineHeightDebug] DEPOIS: id={} lineHeight={} linhas={}",
-                    idBefore, lineHeightDepois, linesDepois
-                );
-                if (lineHeightAntes != lineHeightDepois) {
-                    log.debug("[LineHeightDebug] MUDOU! id={} {} -> {}", idBefore, lineHeightAntes, lineHeightDepois);
-                }
-
-                applyLineHeightFix(widget, interfaceId, Math.max(lineHeightAntes, lineHeightDepois));
-
-                int wAfter = widget.getWidth();
-                int hAfter = widget.getHeight();
-                if (wAfter != wBefore || hAfter != hBefore) {
-                    log.debug(
-                        "[WidgetDebug] CHANGED! id={} {}x{} -> {}x{}",
-                        idBefore, wBefore, hBefore, wAfter, hAfter
-                    );
-                }
+                widget.setText(TranslationLookupHelper.reapplyColors(text, translated));
+                applyLineHeightFix(widget, interfaceId, Math.max(lineHeightBefore, widget.getLineHeight()));
                 return;
             }
         }
@@ -1063,18 +962,6 @@ public class TraduccionEspanolPlugin extends Plugin {
         log.debug("[LineHeightFix] id={} {} -> 18", widget.getId(), referenceLineHeight);
     }
 
-    private int countLines(String text) {
-        if (text == null || text.isEmpty()) {
-            return 0;
-        }
-        int count = 1;
-        for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == '\n') {
-                count++;
-            }
-        }
-        return count;
-    }
 
     private String translateWidgetText(String originalText, int interfaceId) {
         String cleanText = normalizeLookupText(cleanText(originalText));
@@ -1351,27 +1238,22 @@ public class TraduccionEspanolPlugin extends Plugin {
     private void translateMenuEntryUncached(MenuEntry entry, String option) {
         // El juego a veces separa palabras con espacio no separable ("Take-from Fishing")
         String spaced = option.replace(' ', ' ');
-        String cleanOption = HTML_TAG.matcher(spaced).replaceAll("").replaceAll("\\s+", " ").trim();
+        String cleanOption = WHITESPACE.matcher(HTML_TAG.matcher(spaced).replaceAll("")).replaceAll(" ").trim();
         String translation = translationState.translationsMenu.get(cleanOption);
         if (translation == null) {
             translation = translateNumberedMenuOption(translationState.translationsMenu, cleanOption);
         }
         if (translation != null && !translation.equals(cleanOption)) {
-            String replaced = spaced.replaceAll(Pattern.quote(cleanOption), Matcher.quoteReplacement(translation));
+            // Si la opción lleva colores, se cambia solo el texto; si no, la opción entera
+            String replaced = spaced.replace(cleanOption, translation);
             entry.setOption(replaced.equals(spaced) ? translation : replaced);
         } else if (translation != null) {
             // En el diccionario, pero "traducida" igual que en inglés
             diagOnce("menu", null, "igual_al_ingles", cleanOption, translation);
-        } else if (translation == null && config.developerMode()
-            && !translationState.translationMenuValues.contains(cleanOption)
-            && loggedMissingMenuOptions.add(cleanOption)) {
-            diag("menu", null, "sin_traducir", option, null);
-            log.info("[MenuSinTraducir] '{}' (original='{}')", cleanOption,
-                option.replace(" ", "<nbsp>"));
+        } else if (!translationState.translationMenuValues.contains(cleanOption)) {
+            diagOnce("menu", null, "sin_traducir", option, null);
         }
     }
-
-    private final Set<String> loggedMissingMenuOptions = ConcurrentHashMap.newKeySet();
 
     private static final Pattern MENU_DASH_NUMBER = Pattern.compile("^(.+-)(\\d+)$");
     private static final Pattern MENU_PAREN_NUMBER = Pattern.compile("^(.+?) (\\(\\d+\\))$");

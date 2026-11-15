@@ -403,6 +403,7 @@ final class TranslationLookupHelper
     /** Lista de patrones con memoria de resultados. Al recargar los diccionarios se crea una nueva. */
     static final class PatternList extends ArrayList<PatternEntry>
     {
+        private static final long serialVersionUID = 1L;
         private static final int MAX_CACHE = 20000;
         private final transient Map<String, String> cache = new ConcurrentHashMap<>();
 
