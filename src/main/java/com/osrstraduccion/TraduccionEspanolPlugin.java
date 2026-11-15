@@ -25,7 +25,6 @@ import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
-import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
@@ -140,7 +139,6 @@ public class TraduccionEspanolPlugin extends Plugin {
     );
     @Inject private Client client;
     @Inject private ClientThread clientThread;
-    @Inject private ChatMessageManager chatMessageManager;
     @Inject private TraduccionEspanolConfig config;
     @Inject private Gson gson;
     @Inject private OkHttpClient httpClient;
@@ -1574,8 +1572,8 @@ public class TraduccionEspanolPlugin extends Plugin {
             clientThread.invokeLater(() -> {
                 String current = messageNode.getRuneLiteFormatMessage();
                 if (current != null && !current.equals(formatted)) {
+                    // RuneLite aplica los colores (<colHIGHLIGHT>...) al dibujar el chat
                     messageNode.setRuneLiteFormatMessage(formatted);
-                    chatMessageManager.update(messageNode);
                     client.refreshChat();
                     diag("chat", "CONSOLE (reaplicado)", "traducido", current, formatted);
                 }
