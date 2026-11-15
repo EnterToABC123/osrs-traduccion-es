@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -94,7 +95,7 @@ final class TranslationLookupHelper
 
     static List<PatternEntry> compileRegexTranslations(Map<String, String> source)
     {
-        List<PatternEntry> entries = new ArrayList<>();
+        PatternList entries = new PatternList();
         for (Map.Entry<String, String> entry : source.entrySet())
         {
             String key = entry.getKey();
@@ -131,7 +132,9 @@ final class TranslationLookupHelper
             entries.add(new PatternEntry(
                 Pattern.compile(pattern.toString()),
                 translation,
-                specificity
+                specificity,
+                parts[0],
+                parts[parts.length - 1]
             ));
         }
         entries.sort((left, right) -> Integer.compare(right.specificity, left.specificity));
@@ -178,8 +181,40 @@ final class TranslationLookupHelper
 
     static String findRegexTranslation(List<PatternEntry> patterns, String lookup)
     {
+        if (patterns instanceof PatternList)
+        {
+            // Las ventanas se repasan en cada fotograma: se recuerda el resultado (también si no hay traducción)
+            PatternList list = (PatternList) patterns;
+            String cached = list.cache.get(lookup);
+            if (cached != null)
+            {
+                return cached == NO_MATCH ? null : cached;
+            }
+            String result = searchRegexTranslation(patterns, lookup);
+            if (list.cache.size() >= PatternList.MAX_CACHE)
+            {
+                list.cache.clear();
+            }
+            list.cache.put(lookup, result == null ? NO_MATCH : result);
+            return result;
+        }
+        return searchRegexTranslation(patterns, lookup);
+    }
+
+    /** Marca "sin traducción" en la memoria (se compara por identidad). */
+    @SuppressWarnings("StringOperationCanBeSimplified")
+    private static final String NO_MATCH = new String("");
+
+    private static String searchRegexTranslation(List<PatternEntry> patterns, String lookup)
+    {
         for (PatternEntry entry : patterns)
         {
+            // Filtro rápido: el texto debe empezar y terminar como el patrón (evita casi todas las regex)
+            if (!lookup.startsWith(entry.prefix) || !lookup.endsWith(entry.suffix)
+                || lookup.length() < entry.prefix.length() + entry.suffix.length())
+            {
+                continue;
+            }
             Matcher matcher = entry.pattern.matcher(lookup);
             if (!matcher.matches())
             {
@@ -212,6 +247,7 @@ final class TranslationLookupHelper
     private static final Pattern CHAT_COLOR_CODE = Pattern.compile("@[a-z][a-z0-9_]*@");
     private static final Pattern LEADING_CHAT_COLOR_CODES = Pattern.compile("^(?:@[a-z][a-z0-9_]*@)+");
 
+    private static final Pattern WHOLE_COLORED = Pattern.compile("^\\s*(<col=[0-9a-fA-F]{6}>)([^<]*)(</col>)?\\s*$");
     private static final Pattern COLORED_SEGMENT = Pattern.compile(
         "(<col=[0-9a-fA-F]{6}>)(.*?)(</col>|(?=<col=)|$)", Pattern.DOTALL);
 
@@ -232,7 +268,7 @@ final class TranslationLookupHelper
             return translation; // la traducción ya trae sus propios colores
         }
         // Mensaje entero de un solo color (p. ej. avisos en rojo): la traducción entera con ese color
-        Matcher whole = Pattern.compile("^\\s*(<col=[0-9a-fA-F]{6}>)([^<]*)(</col>)?\\s*$").matcher(original);
+        Matcher whole = WHOLE_COLORED.matcher(original);
         if (whole.matches())
         {
             return whole.group(1) + translation + "</col>";
@@ -287,17 +323,42 @@ final class TranslationLookupHelper
             return "";
         }
 
+        if (text.indexOf('<') < 0 && !hasDoubleSpace(text))
+        {
+            return text.trim(); // caso más común: texto sin etiquetas
+        }
         String clean = BR_TAG.matcher(text).replaceAll(" ");
         clean = HTML_TAG.matcher(clean).replaceAll(" ");
-        return clean.replaceAll("\\s+", " ").trim();
+        return WHITESPACE.matcher(clean).replaceAll(" ").trim();
     }
+
+    private static boolean hasDoubleSpace(String text)
+    {
+        for (int i = 0; i < text.length(); i++)
+        {
+            char c = text.charAt(i);
+            if (Character.isWhitespace(c) && (c != ' ' || (i + 1 < text.length()
+                && Character.isWhitespace(text.charAt(i + 1)))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern SPACE_BEFORE_PUNCTUATION = Pattern.compile("\\s+([.,!?])");
+    private static final Pattern HARDCORE_IRONMEN = Pattern.compile("([Hh])ardcore Ironmen ");
 
     static String normalizeLookupText(String text)
     {
-        return text
-            .replaceAll("\\s+([.,!?])", "$1")
-            .replaceAll("([Hh])ardcore Ironmen ", "$1ardcore Ironman ")
-            .replaceAll("standard Ironmen ", "standard Ironman ");
+        String result = SPACE_BEFORE_PUNCTUATION.matcher(text).replaceAll("$1");
+        if (result.contains("Ironmen "))
+        {
+            result = HARDCORE_IRONMEN.matcher(result).replaceAll("$1ardcore Ironman ")
+                .replace("standard Ironmen ", "standard Ironman ");
+        }
+        return result;
     }
 
     static String textToId(String text)
@@ -324,12 +385,35 @@ final class TranslationLookupHelper
         private final Pattern pattern;
         private final String translation;
         private final int specificity;
+        private final String prefix;
+        private final String suffix;
 
-        private PatternEntry(Pattern pattern, String translation, int specificity)
+        private PatternEntry(Pattern pattern, String translation, int specificity, String prefix, String suffix)
         {
             this.pattern = pattern;
             this.translation = translation;
             this.specificity = specificity;
+            this.prefix = prefix;
+            this.suffix = suffix;
+        }
+    }
+
+    /** Lista de patrones con memoria de resultados. Al recargar los diccionarios se crea una nueva. */
+    static final class PatternList extends ArrayList<PatternEntry>
+    {
+        private static final int MAX_CACHE = 20000;
+        private final transient Map<String, String> cache = new ConcurrentHashMap<>();
+
+        @Override
+        public boolean equals(Object o)
+        {
+            return this == o;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return System.identityHashCode(this);
         }
     }
 }

@@ -1324,6 +1324,31 @@ public class TraduccionEspanolPlugin extends Plugin {
             return;
         }
 
+        // El menú se vuelve a montar en cada fotograma: se recuerda el resultado de cada opción
+        TranslationState current = translationState;
+        if (menuCacheState != current) {
+            menuOptionCache.clear();
+            menuCacheState = current;
+        }
+        String cached = menuOptionCache.get(option);
+        if (cached != null) {
+            if (!cached.equals(option)) {
+                entry.setOption(cached);
+            }
+            return;
+        }
+        String before = option;
+        translateMenuEntryUncached(entry, option);
+        if (menuOptionCache.size() > 5000) {
+            menuOptionCache.clear();
+        }
+        menuOptionCache.put(before, entry.getOption() == null ? before : entry.getOption());
+    }
+
+    private final Map<String, String> menuOptionCache = new ConcurrentHashMap<>();
+    private volatile TranslationState menuCacheState;
+
+    private void translateMenuEntryUncached(MenuEntry entry, String option) {
         // El juego a veces separa palabras con espacio no separable ("Take-from Fishing")
         String spaced = option.replace(' ', ' ');
         String cleanOption = HTML_TAG.matcher(spaced).replaceAll("").replaceAll("\\s+", " ").trim();
@@ -1669,20 +1694,11 @@ public class TraduccionEspanolPlugin extends Plugin {
     }
 
     private String cleanText(String text) {
-        if (text == null) {
-            return "";
-        }
-
-        String clean = BR_TAG.matcher(text).replaceAll(" ");
-        clean = HTML_TAG.matcher(clean).replaceAll(" ");
-        return clean.replaceAll("\\s+", " ").trim();
+        return TranslationLookupHelper.cleanText(text);
     }
 
     private String normalizeLookupText(String text) {
-        return text
-            .replaceAll("\\s+([.,!?])", "$1")
-            .replaceAll("([Hh])ardcore Ironmen ", "$1ardcore Ironman ")
-            .replaceAll("standard Ironmen ", "standard Ironman ");
+        return TranslationLookupHelper.normalizeLookupText(text);
     }
 
     private String preserveStartTags(String text) {
