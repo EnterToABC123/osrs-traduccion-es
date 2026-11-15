@@ -469,7 +469,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     @Subscribe
     public void onWidgetLoaded(WidgetLoaded event) {
         int groupId = event.getGroupId();
-        log.info("[WidgetLoaded] groupId={}", groupId);
+        log.debug("[WidgetLoaded] groupId={}", groupId);
 
         if (groupId == CLUE_SCROLL_TEXT) {
             if (config.enableClueScrolls()) {
@@ -605,7 +605,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         loginInspectionDeadline = System.currentTimeMillis() + LOGIN_INSPECTION_WINDOW_MS;
         inspectedLoginGroups.clear();
         loginInterfaceGroups.clear();
-        log.info("[LoginInspect] state={}", state);
+        log.debug("[LoginInspect] state={}", state);
         inspectVisibleLoginGroups();
     }
 
@@ -721,7 +721,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         String option = event.getMenuOption();
-        log.info("[DEBUG MenuOptionClicked] option='{}' target='{}' action={}",
+        log.debug("[DEBUG MenuOptionClicked] option='{}' target='{}' action={}",
             option, event.getMenuTarget(), event.getMenuAction());
         String englishOption = reverseTranslateMenuOption(option);
         if ("View".equals(option) || "View".equals(englishOption)) {
@@ -844,10 +844,10 @@ public class TraduccionEspanolPlugin extends Plugin {
 
     private void translateInterface(int interfaceId) {
         if (interfaceId == ITEM_PREVIEW) {
-            log.info("[ItemPreview] Traduzindo interface 203");
+            log.debug("[ItemPreview] Traduzindo interface 203");
         }
         if (contains(SKILL_GUIDE_INTERFACES, interfaceId)) {
-            log.info("[SkillGuide] traducao iniciada");
+            log.debug("[SkillGuide] traducao iniciada");
         }
 
         for (int i = 0; i < 100; i++) {
@@ -866,7 +866,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         String text = widget.getText();
         if (text != null && !text.isEmpty()) {
             if (interfaceId == ITEM_PREVIEW) {
-                log.info("[ItemPreview] processando texto: {}", text);
+                log.debug("[ItemPreview] processando texto: {}", text);
             }
 
             int wBefore = widget.getWidth();
@@ -963,7 +963,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         widget.setLineHeight(18);
-        log.info("[LineHeightFix] id={} {} -> 18", widget.getId(), referenceLineHeight);
+        log.debug("[LineHeightFix] id={} {} -> 18", widget.getId(), referenceLineHeight);
     }
 
     private int countLines(String text) {
@@ -1277,6 +1277,12 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         if (!shouldTranslateChatMessage(event.getType())) {
+            // Modo desarrollador: anota el tipo de los mensajes que no se traducen (nunca chats de jugadores)
+            if (config.developerMode() && !isPlayerChat(event.getType())) {
+                String sample = cleanText(event.getMessage());
+                log.info("[ChatIgnorado] type={} texto='{}'", event.getType(),
+                    sample.length() > 80 ? sample.substring(0, 80) + "..." : sample);
+            }
             return;
         }
 
@@ -1308,6 +1314,11 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         if (translation == null && isNpcSpeech(event.getType())) {
             translation = translateNpcSpeech(clean, state);
+        }
+        if (config.developerMode() && client.getGameState() != GameState.LOGGED_IN) {
+            // Diagnóstico: mensajes que llegan mientras se inicia sesión (avisos rojos de NMZ, Zaff, etc.)
+            log.info("[ChatLogin] estado={} type={} traducido={} texto='{}'", client.getGameState(),
+                event.getType(), translation != null, clean.length() > 80 ? clean.substring(0, 80) + "..." : clean);
         }
         if (translation == null) {
             recordMissingTranslation(
@@ -1353,6 +1364,32 @@ public class TraduccionEspanolPlugin extends Plugin {
         String name = event.getName() == null ? "" : cleanText(event.getName()).replace(' ', ' ').trim();
         String own = client.getLocalPlayer().getName();
         return own != null && name.equalsIgnoreCase(own.replace(' ', ' ').trim());
+    }
+
+    /** Chats escritos por personas: nunca se registran ni se anotan. */
+    private static boolean isPlayerChat(ChatMessageType type) {
+        switch (type) {
+            case PUBLICCHAT:
+            case PRIVATECHAT:
+            case PRIVATECHATOUT:
+            case MODCHAT:
+            case MODPRIVATECHAT:
+            case FRIENDSCHAT:
+            case CLAN_CHAT:
+            case CLAN_GUEST_CHAT:
+            case CLAN_GIM_CHAT:
+            case AUTOTYPER:
+            case MODAUTOTYPER:
+            case TRADEREQ:
+            case TRADE:
+            case TRADE_SENT:
+            case CHALREQ_TRADE:
+            case CHALREQ_FRIENDSCHAT:
+            case CHALREQ_CLANCHAT:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static boolean isNpcSpeech(ChatMessageType type) {
