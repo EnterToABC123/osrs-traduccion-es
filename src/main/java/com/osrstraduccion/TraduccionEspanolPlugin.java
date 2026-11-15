@@ -1194,6 +1194,9 @@ public class TraduccionEspanolPlugin extends Plugin {
         String spaced = option.replace(' ', ' ');
         String cleanOption = HTML_TAG.matcher(spaced).replaceAll("").replaceAll("\\s+", " ").trim();
         String translation = translationState.translationsMenu.get(cleanOption);
+        if (translation == null) {
+            translation = translateNumberedMenuOption(translationState.translationsMenu, cleanOption);
+        }
         if (translation != null && !translation.equals(cleanOption)) {
             String replaced = spaced.replaceAll(Pattern.quote(cleanOption), Matcher.quoteReplacement(translation));
             entry.setOption(replaced.equals(spaced) ? translation : replaced);
@@ -1206,6 +1209,31 @@ public class TraduccionEspanolPlugin extends Plugin {
     }
 
     private final Set<String> loggedMissingMenuOptions = ConcurrentHashMap.newKeySet();
+
+    private static final Pattern MENU_DASH_NUMBER = Pattern.compile("^(.+-)(\\d+)$");
+    private static final Pattern MENU_PAREN_NUMBER = Pattern.compile("^(.+?) (\\(\\d+\\))$");
+
+    /**
+     * Opciones con cantidades: "Withdraw-14" usa "Withdraw-X" ("Retirar-X" -> "Retirar-14") y
+     * "Edit-tags (1)" usa "Edit-tags". Sirve en los dos sentidos (también para volver al inglés).
+     */
+    static String translateNumberedMenuOption(Map<String, String> menu, String option) {
+        Matcher dash = MENU_DASH_NUMBER.matcher(option);
+        if (dash.matches()) {
+            String base = menu.get(dash.group(1) + "X");
+            if (base != null && base.endsWith("X")) {
+                return base.substring(0, base.length() - 1) + dash.group(2);
+            }
+        }
+        Matcher paren = MENU_PAREN_NUMBER.matcher(option);
+        if (paren.matches()) {
+            String base = menu.get(paren.group(1));
+            if (base != null) {
+                return base + " " + paren.group(2);
+            }
+        }
+        return null;
+    }
 
     private void restoreEnglishMenu(Menu menu) {
         if (menu == null) {
@@ -1248,6 +1276,22 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
 
         String english = translationState.reverseTranslationsMenu.get(normalized);
+        if (english == null) {
+            // "retirar-14" -> "Withdraw-14", "editar etiquetas (1)" -> "Edit-tags (1)"
+            Matcher dash = MENU_DASH_NUMBER.matcher(normalized);
+            Matcher paren = MENU_PAREN_NUMBER.matcher(normalized);
+            if (dash.matches()) {
+                String base = translationState.reverseTranslationsMenu.get(dash.group(1) + "x");
+                if (base != null && base.endsWith("X")) {
+                    english = base.substring(0, base.length() - 1) + dash.group(2);
+                }
+            } else if (paren.matches()) {
+                String base = translationState.reverseTranslationsMenu.get(paren.group(1));
+                if (base != null) {
+                    english = base + " " + paren.group(2);
+                }
+            }
+        }
         if (english == null || english.equals(normalized)) {
             return null;
         }
