@@ -20,7 +20,10 @@ import net.runelite.api.events.MenuOpened;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.OverheadTextChanged;
 import net.runelite.api.events.PostMenuSort;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarClientID;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.VarClientIntChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
@@ -224,6 +227,7 @@ public class TraduccionEspanolPlugin extends Plugin {
         loginInspectionDeadline = 0L;
         inspectedLoginGroups.clear();
         loginInterfaceGroups.clear();
+        sidePanelGroups.clear();
     }
 
     private void startRemoteTranslationUpdater() {
@@ -648,8 +652,9 @@ public class TraduccionEspanolPlugin extends Plugin {
             // Las que el juego cargó durante el login (estadísticas, combate, cuenta...) se vuelven a traducir
             // en el primer tick ya dentro, ahora con su diccionario correcto.
             for (int groupId : loginInterfaceGroups) {
-                if (groupId != WELCOME_SCREEN) {
+                if (groupId != WELCOME_SCREEN && groupId != CHATBOX_UNIVERSE && groupId != CHAT_OVERLAY) {
                     groupsToRetranslate.add(groupId);
+                    sidePanelGroups.add(groupId);
                 }
             }
             loginInterfaceGroups.clear();
@@ -664,11 +669,47 @@ public class TraduccionEspanolPlugin extends Plugin {
         loginInspectionDeadline = System.currentTimeMillis() + LOGIN_INSPECTION_WINDOW_MS;
         inspectedLoginGroups.clear();
         loginInterfaceGroups.clear();
+        sidePanelGroups.clear();
         log.debug("[LoginInspect] state={}", state);
         inspectVisibleLoginGroups();
     }
 
     private final Set<Integer> groupsToRetranslate = new HashSet<>();
+
+    /**
+     * Pestañas laterales (combate, cuenta, ajustes...): el juego vuelve a escribir sus textos en inglés al
+     * abrir la pestaña o cambiar de arma, sin recargar la interfaz. Se traducen de nuevo en esos momentos,
+     * durante un par de fotogramas para llegar después de que el juego termine.
+     */
+    private final Set<Integer> sidePanelGroups = new HashSet<>();
+    private int sidePanelRetranslateFrames;
+
+    @Subscribe
+    public void onVarClientIntChanged(VarClientIntChanged event) {
+        if (event.getIndex() == VarClientID.TOPLEVEL_PANEL) {
+            sidePanelRetranslateFrames = 3;
+        }
+    }
+
+    @Subscribe
+    public void onItemContainerChanged(ItemContainerChanged event) {
+        if (event.getContainerId() == InventoryID.WORN) {
+            sidePanelRetranslateFrames = 3;
+        }
+    }
+
+    private void retranslateSidePanels() {
+        if (sidePanelRetranslateFrames <= 0) {
+            return;
+        }
+        sidePanelRetranslateFrames--;
+        for (int groupId : sidePanelGroups) {
+            Widget root = client.getWidget(groupId, 0);
+            if (root != null && !root.isHidden()) {
+                translateInterface(groupId);
+            }
+        }
+    }
 
     @Subscribe
     public void onGameTick(GameTick event) {
@@ -801,6 +842,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     public void onBeforeRender(BeforeRender event) {
         suppressMouseHighlightTooltipForTranslatedMenuOptions();
         translateDynamicInterfaces();
+        retranslateSidePanels();
 
         if (!skillGuideOpen || !config.enableSkillGuide()) {
             return;
