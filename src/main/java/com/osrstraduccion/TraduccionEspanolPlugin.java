@@ -63,6 +63,8 @@ import java.util.regex.Pattern;
 public class TraduccionEspanolPlugin extends Plugin {
     private static final int CHATBOX_UNIVERSE = 162;
     private static final int DIALOG_MESSAGE = 229;
+    /** Largo con el que el juego corta los diálogos copiados al chat. */
+    private static final int TRUNCATED_DIALOG_LENGTH = 190; // con margen por espacios o colores quitados
     private static final int CHAT_OVERLAY = 263;
     private static final int MUSIC_PLAYER = 239;
     private static final int FRIENDS_LIST = 429;
@@ -1470,7 +1472,9 @@ public class TraduccionEspanolPlugin extends Plugin {
                 translation = translation.substring(colorPrefix.length());
             }
         }
-        if (translation == null && isNpcSpeech(event.getType())) {
+        if (translation == null
+            && (isNpcSpeech(event.getType()) || event.getType() == ChatMessageType.MESBOX)) {
+            // Los cuadros de mensaje de las quests (MESBOX) suelen estar en el diccionario de diálogos
             translation = translateNpcSpeech(clean, state);
         }
         if (translation == null) {
@@ -1604,7 +1608,31 @@ public class TraduccionEspanolPlugin extends Plugin {
             translation = TranslationLookupHelper.findTranslation(
                 state.translationsOverhead, state.regexOverheadTranslations, lookup);
         }
+        if (translation == null && text.length() >= TRUNCATED_DIALOG_LENGTH) {
+            translation = findTruncatedDialog(state.translations, lookup);
+        }
         return translation == null ? null : prefix + translation;
+    }
+
+    /**
+     * El juego copia los diálogos al historial del chat cortados a 200 caracteres ("Nombre|texto"), a
+     * veces a mitad de palabra. Si el comienzo coincide con una sola frase del diccionario, se usa esa
+     * traducción completa. Solo ocurre con diálogos largos, así que recorrer el diccionario aquí es raro.
+     */
+    private static String findTruncatedDialog(Map<String, String> translations, String start) {
+        if (start.length() < 60) {
+            return null;
+        }
+        String found = null;
+        for (Map.Entry<String, String> entry : translations.entrySet()) {
+            if (entry.getKey().length() > start.length() && entry.getKey().startsWith(start)) {
+                if (found != null && !found.equals(entry.getValue())) {
+                    return null; // ambiguo: mejor dejarlo en inglés
+                }
+                found = entry.getValue();
+            }
+        }
+        return found;
     }
 
     private boolean shouldDeferRichChatOverlayTranslation(String translation) {
