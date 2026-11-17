@@ -66,6 +66,7 @@ public class TraduccionEspanolPlugin extends Plugin {
     /** Largo con el que el juego corta los diálogos copiados al chat. */
     private static final int TRUNCATED_DIALOG_LENGTH = 190; // con margen por espacios o colores quitados
     private static final int CHAT_OVERLAY = 263;
+    private static final int PRIVATE_CHAT = 163; // mensajes privados sobre la pantalla (dentro de 161)
     private static final int MUSIC_PLAYER = 239;
     private static final int FRIENDS_LIST = 429;
     private static final int IGNORE_LIST = 432;
@@ -963,7 +964,9 @@ public class TraduccionEspanolPlugin extends Plugin {
     }
 
     private void translateWidget(Widget widget, int interfaceId) {
-        if (widget == null) {
+        // Los mensajes privados de otros jugadores no se traducen ni se registran: se salta toda esa interfaz
+        // aunque venga anidada dentro de la ventana principal (161).
+        if (widget == null || (widget.getId() >>> 16) == PRIVATE_CHAT) {
             return;
         }
 
@@ -1477,7 +1480,12 @@ public class TraduccionEspanolPlugin extends Plugin {
             // Los cuadros de mensaje de las quests (MESBOX) suelen estar en el diccionario de diálogos
             translation = translateNpcSpeech(clean, state);
         }
+        // "Fulano has logged in." lleva el nombre de otra persona: se traduce, pero nunca se registra
+        boolean namesSomeone = event.getType() == ChatMessageType.LOGINLOGOUTNOTIFICATION;
         if (translation == null) {
+            if (namesSomeone) {
+                return;
+            }
             diag("chat", chatDiagType(event.getType()), "sin_traducir", rawMessage, null);
             recordMissingTranslation(
                 isNpcSpeech(event.getType()) ? "translations.json" : "translations_game_message.json",
@@ -1492,7 +1500,9 @@ public class TraduccionEspanolPlugin extends Plugin {
 
         if (!colorsKept) {
             if (shouldDeferRichChatOverlayTranslation(translation)) {
-                diag("chat", chatDiagType(event.getType()), "traducido_en_ventana", rawMessage, translation);
+                if (!namesSomeone) {
+                    diag("chat", chatDiagType(event.getType()), "traducido_en_ventana", rawMessage, translation);
+                }
                 translateInterface(CHAT_OVERLAY);
                 return;
             }
@@ -1508,7 +1518,9 @@ public class TraduccionEspanolPlugin extends Plugin {
         }
         event.setMessage(translation);
         client.refreshChat();
-        diag("chat", chatDiagType(event.getType()), "traducido", rawMessage, translation);
+        if (!namesSomeone) {
+            diag("chat", chatDiagType(event.getType()), "traducido", rawMessage, translation);
+        }
 
         // Los mensajes de otros plugins de RuneLite (p. ej. Daily Task Indicator: "You have herb boxes waiting
         // to be collected at NMZ.") se añaden por ChatMessageManager, que después de este evento vuelve a
