@@ -22,9 +22,11 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -37,6 +39,12 @@ final class RemoteTranslationService {
     static final String DEFAULT_MANIFEST_URL =
         "https://api.github.com/repos/EnterToABC123/"
             + "osrs-translate-translations/contents/manifest.json?ref=main";
+
+    /** Únicos servidores a los que el plugin se conecta (también tras una redirección). */
+    static final Set<String> ALLOWED_HOSTS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+        "github.com",
+        "api.github.com",
+        "raw.githubusercontent.com")));
 
     static final List<String> REQUIRED_FILES = Collections.unmodifiableList(Arrays.asList(
         "translations.json",
@@ -268,8 +276,9 @@ final class RemoteTranslationService {
         if (!response.isSuccessful()) {
             throw new IOException("HTTP " + response.code() + " ao baixar " + uri);
         }
-        if (!response.request().url().isHttps()) {
-            throw new IOException("Redirecionamento para URL nao segura: " + response.request().url());
+        if (!response.request().url().isHttps()
+            || !isAllowedHost(response.request().url().host())) {
+            throw new IOException("Redirecionamento para URL nao permitida: " + response.request().url());
         }
 
         ResponseBody body = response.body();
@@ -348,10 +357,17 @@ final class RemoteTranslationService {
             if (!uri.isAbsolute() || !"https".equalsIgnoreCase(uri.getScheme())) {
                 throw new IOException("Apenas URL HTTPS e permitida para " + label);
             }
+            if (uri.getRawUserInfo() != null || uri.getPort() != -1 || !isAllowedHost(uri.getHost())) {
+                throw new IOException("Servidor nao permitido para " + label + ": " + uri.getHost());
+            }
             return uri;
         } catch (URISyntaxException e) {
             throw new IOException("URL invalida para " + label, e);
         }
+    }
+
+    static boolean isAllowedHost(String host) {
+        return host != null && ALLOWED_HOSTS.contains(host.toLowerCase(Locale.ROOT));
     }
 
     private String requireSafeName(String value, String label) throws IOException {
