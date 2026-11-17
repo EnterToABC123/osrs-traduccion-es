@@ -120,13 +120,15 @@ final class TranslationLookupHelper
             }
 
             String[] parts = PLACEHOLDER.split(key, -1);
+            Matcher names = PLACEHOLDER.matcher(key);
+            boolean onlyPunctuation = !LETTER.matcher(PLACEHOLDER.matcher(key).replaceAll("")).find();
             StringBuilder pattern = new StringBuilder();
             for (int i = 0; i < parts.length; i++)
             {
                 pattern.append(Pattern.quote(parts[i]));
-                if (i < parts.length - 1)
+                if (i < parts.length - 1 && names.find())
                 {
-                    pattern.append("(.+?)");
+                    pattern.append(placeholderRegex(names.group(), onlyPunctuation));
                 }
             }
             entries.add(new PatternEntry(
@@ -139,6 +141,31 @@ final class TranslationLookupHelper
         }
         entries.sort((left, right) -> Integer.compare(right.specificity, left.specificity));
         return entries;
+    }
+
+    private static final Pattern LETTER = Pattern.compile("\\p{L}");
+
+    /**
+     * Un nombre ([player], [lad/lass], [rank]...) es corto y sin signos de frase: si el comodín pudiera
+     * tragarse cualquier texto, "[player]?" o "You [player]?" convertirían una pregunta inglesa entera en
+     * "¿...?" o "¿Tú ...?" y la darían por traducida. Lo mismo con las claves que solo tienen signos.
+     */
+    static String placeholderRegex(String placeholder, boolean onlyPunctuation)
+    {
+        String name = placeholder.toLowerCase(java.util.Locale.ROOT);
+        if (name.contains("player"))
+        {
+            return "([^.!?,;:]{1,12}?)"; // los nombres de jugador tienen como mucho 12 caracteres
+        }
+        if (name.contains("/") || name.contains("rank") || name.contains("name"))
+        {
+            return "([^.!?,;:]{1,30}?)";
+        }
+        if (onlyPunctuation)
+        {
+            return "([^.!?]{1,30}?)";
+        }
+        return "(.+?)";
     }
 
     private static boolean isIdentityTemplate(String key, String translation)
