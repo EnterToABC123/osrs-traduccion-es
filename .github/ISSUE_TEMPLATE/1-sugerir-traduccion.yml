@@ -1,0 +1,41 @@
+name: "✍️ Sugerir una traducción"
+description: Un texto del juego sigue en inglés o está mal traducido.
+title: "[Traducción] "
+labels: ["traducción"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ¡Gracias por ayudar! Rellena lo que puedas; lo revisamos y lo publicamos en pocos días.
+        Recuerda: los nombres de **lugares, objetos, jefes, minijuegos y personajes** se dejan en inglés a propósito.
+  - type: textarea
+    id: ingles
+    attributes:
+      label: Texto en inglés
+      description: Cópialo tal como sale en el juego (puedes poner varios, uno por línea).
+      placeholder: "You feel a gust of wind."
+    validations:
+      required: true
+  - type: textarea
+    id: espanol
+    attributes:
+      label: Cómo debería decirse en español
+      description: Si no estás seguro, déjalo en blanco y lo traducimos nosotros.
+      placeholder: "Sientes una ráfaga de viento."
+  - type: dropdown
+    id: donde
+    attributes:
+      label: ¿Dónde aparece?
+      options:
+        - Chat (mensajes del juego)
+        - Diálogo con un personaje
+        - Menú de clic derecho
+        - Ventana o interfaz
+        - Texto sobre la cabeza de alguien
+        - Diario de misiones o de logros
+        - No estoy seguro
+  - type: textarea
+    id: captura
+    attributes:
+      label: Captura de pantalla (opcional)
+      description: Puedes arrastrar la imagen aquí. Tapa los nombres o mensajes de otros jugadores si salen.

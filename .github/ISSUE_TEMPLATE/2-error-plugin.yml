@@ -1,0 +1,17 @@
+name: "🐞 Avisar de un error del plugin"
+description: El plugin no funciona bien (no traduce nada, se ve mal, va lento...).
+title: "[Error] "
+labels: ["error"]
+body:
+  - type: textarea
+    id: que
+    attributes:
+      label: ¿Qué pasa?
+      description: Cuéntalo con tus palabras y, si puedes, cómo hacer que vuelva a pasar.
+    validations:
+      required: true
+  - type: textarea
+    id: captura
+    attributes:
+      label: Captura de pantalla (opcional)
+      description: Tapa los nombres o mensajes de otros jugadores si salen.

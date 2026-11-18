@@ -5,8 +5,14 @@ diarios de misiones y de logros, libros, objetos y más.
 
 > **🚧 En mejora constante:** la traducción todavía no es perfecta. Se actualiza **todos los días**,
 > corrigiendo errores y traduciendo textos nuevos del juego (quests, Sailing, menús...). Si ves algo en
-> inglés o mal traducido, puedes avisar en [Issues](https://github.com/EnterToABC123/osrs-traduccion-es/issues).
+> inglés o mal traducido, puedes avisar en [Issues](https://github.com/EnterToABC123/osrs-traduccion-es/issues/new/choose).
 > Las traducciones nuevas llegan solas: no hace falta reinstalar el plugin.
+
+## 🤝 ¿Quieres ayudar?
+
+Cualquiera puede sugerir traducciones, sin saber programar:
+**[✍️ Sugerir una traducción](https://github.com/EnterToABC123/osrs-traduccion-es/issues/new?template=1-sugerir-traduccion.yml)**.
+Las reglas de estilo y cómo mandar muchas a la vez están en la guía [Cómo ayudar](CONTRIBUTING.md).
 
 ## Cómo instalarlo
 
