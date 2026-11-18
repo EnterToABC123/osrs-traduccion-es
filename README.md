@@ -3,6 +3,22 @@
 Plugin de RuneLite que traduce Old School RuneScape al español: diálogos, opciones, menús, mensajes del juego,
 diarios de misiones y de logros, libros, objetos y más.
 
+> **🚧 En mejora constante:** la traducción todavía no es perfecta. Se actualiza **todos los días**,
+> corrigiendo errores y traduciendo textos nuevos del juego (quests, Sailing, menús...). Si ves algo en
+> inglés o mal traducido, puedes avisar en [Issues](https://github.com/EnterToABC123/osrs-traduccion-es/issues).
+> Las traducciones nuevas llegan solas: no hace falta reinstalar el plugin.
+
+## Cómo instalarlo
+
+1. En RuneLite, abre el panel lateral y haz clic en el icono del enchufe (**Plugin Hub**).
+2. Busca **OSRS Traducción Español** y pulsa **Install**.
+
+Los nombres de lugares, objetos, jefes, minijuegos y personajes se dejan en inglés a propósito, para que
+coincidan con la wiki y con lo que usan los demás jugadores. Los chats y nombres de otros jugadores nunca
+se traducen ni se guardan.
+
+## Origen
+
 Está basado en [OSRS Translate PT-BR](https://github.com/walterrezende12-tech/Traducao-OSRS-BR) de Walter Rezende
 (licencia BSD-2) y usa sus diccionarios, con una revisión completa del español.
 
